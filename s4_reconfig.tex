@@ -1,0 +1,178 @@
+\section{Reconfiguring \tunnels}\label{s:reconfig}
+\begin{listing}[t]
+\begin{minted}[linenos, breaklines]{rust}
+// Server-side code to "select" a peer-compatible sharding impl.
+// and "switch" between unilateral DPDK datapaths. 
+let ser = SerializeChunnel::new(/*...*/);
+let shrd = select!(MboxShard::new(/*..*/), 
+        ClientShard::new(/*..*/));
+let dp = switch!(DpdkThread::new(/*...*/,
+    DpdkInline::new(/*...*/));
+let handle = dp.handle();
+// conns: a stream of incoming connections.
+let conns = tbm::make_stack!(ser, shrd, dp).listen(addr);
+/* application logic... */
+// trigger a re-configuration to the `DpdkInline` chunnel.
+handle.reconfigure(DpdkInline);
+\end{minted}
+\caption{\name applications use \texttt{switch} and \texttt{select} in their \tunnel stack to specify options for reconfiguration.}\label{l:select}
+\end{listing}
+%
+%
+\begin{outline}
+  \1 As we explained before, reconfiguration in \name means changing \tunnel implementations.
+    \2 Thus when reconfiguring a \tunnel, \name needs to first instantiate the new implementation, copy state from the existing \tunnel implementation to the newly instantiated one, check compatibility between the new implementation and implementations used by other endpoints, and finally switch over to the new implementation.    
+    \2 Multiple \tunnels can be reconfigured in one go, in which case \name amortizes the cost of each step.
+  
+  % In general, to reconfigure a \tunnel we need to initialize the new \tunnel's state, migrate state from the existing connection, and then tear down the old \tunnel. To reconfigure a connection, we simply need to reconfigure all of its component \tunnels.
+  \1 When (re)configuring a \name connection, there are two possibilities: either the functionality is \emph{multilateral} or it is \emph{unilateral}. We show both in Listing~\ref{l:select}.\notepanda{I do not think we should make this distinction: unilateral is just a special case of multilateral. The current text makes it sound like a different thing which is a bit strange IMO.}
+    \2 Multilateral reconfiguration requires agreement from all connection participants. For example, if we wanted to change the sharding strategy as in Listing~\ref{l:select} lines 4--5 then it is necessary for connection peers to agree.
+      \3 To make multilateral \tunnel choosing work, we require some way to reason about which communication libraries are available on each side of a connection, and a way to reason about whether those libraries are compatible.
+      \3 To express this choice, we provide \name's \texttt{select} type, as in Listing~\ref{l:select}.
+      \3 \name uses the \texttt{select} type to decide an implementation using its \emph{negotiation protocol}, which we detail in \S\ref{s:negotiation}.
+      \3 To reconfigure a multilateral/multilateral \tunnel, we re-use the negotiation protocol when initializing the new \tunnel's state.
+    \2 Unilateral reconfiguration only affects a single host. For example, switching between different DPDK datapath structures does not depend on what connection peers are doing. This is the type of configuration that past work has generally supported, but we extend this to be \emph{re}-configurable: the application developer can decide which implementation to use at runtime.
+      \3 Application developers can express unilateral negotiation in the chunnel stack on a per-chunnel basis using \name's \texttt{switch} type, shown in Listing~\ref{l:select} lines 6--7.
+      \3 When we want to reconfigure a connection, \name's reconfiguration API comes into play.
+      \3 We discuss this in detail in \S\ref{s:reconfig}.
+\end{outline}
+
+\subsection{Negotiation}\label{s:negotiation}
+\notePanda{The placement of this subsection worries me: we use negotiation for both initial connections and reconfiguration, we even mention this earlier. I don't think this should be under reconfiguration (the text above), IMO, but should come earlier and then we should just ref back to this.}
+
+\name's negotiation protocol aims to select compatible \tunnel stacks when creating a connection. We say two \tunnels are compatible if data sent through one can be successfully received by the other and vice-versa. For example, two serialization \tunnels are compatible if data serialized by one can be deserialized by the other. Naturally, to check compatibility, \name needs to first collect (in a single endpoint) the set of \tunnel stacks specified by all endpoints. Thus, negotiating the datapath stack requires at least some communication. In what follows, we begin by describing how negotiation works for point-to-point connections that have two endpoints. We discuss how negotiation works when connecting among multiple endpoints (\eg when using publish-subscribe \tunnels) in \S\ref{s:multilateral} after explaining our point-to-point mechanism.
+
+As Figure~\ref{f:impl-lifecycle} shows, this communication occurs in three phases. 
+%First, when an endpoint calls \texttt{connect} (in this section, we refer to this endpoint as the \emph{client}), \name uses the specified network I/O library (\S\ref{s:model:app}) to establish a \emph{base connection} to the other endpoint (which we refer to as the \emph{server}). Our implementation supports a variety of network I/O libraries, including the sockets API and Shenango~\cite{shenango}. 
+\begin{outline}
+    \1 To perform negotiation, \name must communicate with the connection peer. Therefore, the bottom layer of the \tunnel stack must always transform the unit type \texttt{()} into a connection that can send and receive byte messages. We refer to this initial connection as a \emph{base connection}.
+      \2 Since negotiation must differentiate between connections, a \name server should return a connection stream (analogous to \texttt{accept()}).
+\end{outline}
+Note that while \name's negotiation protocol requires message reliability and ordering, we implement a simple reliability and ordering protocol as part of the negotiation logic. As a result, we do not require the base connection to implement TCP or another reliable transport protocol. 
+Once the base connection has been established, the client uses this connection to send the server a message describing its \tunnel stack.  
+On receiving this message, the server checks whether the client has specified a compatible \tunnel stack to its own. If this check fails, the server returns an error to the client.  Otherwise, the server selects a compatible \tunnel stack and sends the selected \tunnel stack to the client. The client and server then use this information to initialize a datapath stack by recursively calling \texttt{connect\_wrap} as described in \S\ref{s:chunnel}.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.48\textwidth]{img/chunnel-lifecycle.pdf}
+    \caption{The \tunnel-implementation state machine: shows the sequence in which \name calls the interface functions for a single \tunnel-implementation. \fixme{need to re-vamp this figure. there should probably a loop in the arrows that indicates reconfiguration.}}
+    \label{f:impl-lifecycle}
+%    \vspace{-.15in}
+\end{figure}
+
+\paragrapha{Checking compatibility} This protocol requires that \name be able to check compatibility between pairs of \tunnels. A tempting approach to doing so would be to use static analysis to check compatibility between \tunnel implementations. However, \name does not constrain how developers write \tunnels, and checking compatibility is at least as hard as checking equivalence, and well known results in logic show that checking equivalence between programs is undecidable~\cite{sipser13}. 
+Therefore, in \name, we adopt a simpler approach where \tunnel developers describe \emph{relative} compatibility by providing an (opaque to \name) capability that implements a comparison function \name can use to check compatibility (Listing~\ref{l:chunnel} lines 12-13). To implement this mechanism, we require \tunnel developers to define a new capability type (or reuse one another \tunnel defines, to indicate compatibility with that \tunnel), and return an instance of this type when the \tunnel's \texttt{capability} function is called. 
+
+A capability type must be serializable and must implement the \texttt{Capability} interface, which provides a function \name uses to check compatibility with another \texttt{Capability} instance. 
+In practice, we found that in most cases, \tunnel capabilities can be encoded as a set of labels and that checking compatibility between them requires either checking that the sets are equal -- we refer to this as ``exact-match'' -- or that there is a non-empty intersection between sets -- we refer to this as ``composition''.
+So, to check \tunnel stack compatibility, \name ensures that ``exact-match'' capabilities (such as serialization) are present in both compared stacks, and that ``compositional'' capabilities (such as sharding) are present in at least one.
+
+Our design does not assume that capabilities are standardized. Instead, we only require that developers writing networked programs that communicate with each other (\eg a client and a server) use the same capability types. 
+This is similar to the status quo, where client developers must use the same RPC library as used by the server. Indeed, the objective of \name capabilities is to allow \tunnel developers the ability to indicate \emph{relative} compatibility; while the ProtoBuf developers provide a software reference implementation of their serialization library, a later compatible implementation based on ProtoACC~\cite{protoacc} would reuse the same capability types to indicate compatibility, and any future implementations could do the same.
+
+\subsection{Multi-Party Negotiation}\label{s:multilateral}
+\noteakshay{migrated from old version, need to check for flow}
+\name supports connections with an arbitrarily large number of endpoints communicating over a single connection (\eg multicast or publish-subscribe). Before designing a negotiation protocol for this scenario, we need to first determine how runtime reconfigurability works in a multi-endpoint setting. A point-to-point connection only exists for as long as the client and server are communicating and does not need to consider cases where endpoints join after the negotiation step has finished. However, this is not the case for connections with multiple endpoints. We can neither assume that all endpoints are known when a connection is first established nor can we require that all endpoints connect at the same time. As a result, we cannot use a mechanism where negotiation runs once when the connection is established and must provide mechanisms that allow (a) endpoints to recover a connection's datapath stack even if they did not participate in the negotiation round, and (b) when necessary, allow endpoints to trigger another round of negotiation and transition to a different datapath stack. 
+
+We implement a ``rendezvous-based'' negotiation protocol for the multi-endpoint case. We implement negotiation using a key-value store that can be accessed by all endpoints. The key-value store is also responsible for recording the negotiated datapath stack, thus allowing endpoints to recover the connection's datapath stack even when they do not participate in the negotiation. We require that the key-value store support serializable multi-key transactions. However, we do not impose other requirements, and we allow the use of both single-node key-value store (\eg Redis) and replicated consensus based store (\eg etcd) to be used for multi-endpoint negotiation. While the failure of this key-value store prevents new endpoints from joining a multi-endpoint connection, it has no impact on any endpoint that has already joined. Furthermore, the negotiation state is not shared across connections, and thus the key-value store can be easily sharded for scalability. While our use of an external-key value store has an impact on the time taken to establish a multi-endpoint connection, any algorithm for multi-endpoint negotiation requires agreement and would thus impose similar performance costs.
+
+A peer starts multi-party negotiation by connecting to the key-value store and proposing a \tunnel implementation stack, using compare-and-swap (\eg via a transaction) to check for an existing stack.
+If this compare-and-swap operation succeeds, the peer can safely use the \tunnel implementation stack it proposed. 
+Otherwise, the key-value store returns the \tunnel implementation stack already in place amongst the existing connection participants along with the number of participants in the connection.
+The new peer then uses the same stack comparison procedure described in \S\ref{s:negotiation} to determine its local stack's compatibility.
+The peer can then use this this stack or propose a reconfiguration. We explain how to safely reconfigure a multi-party connection below.
+
+\subsection{Reconfiguration \fixme{some more specific name?}}\label{s:impl-reconfig}
+\begin{outline}
+\1 We describe how \name re-configures connections in three contexts: for a unilateral \texttt{switch} type on a single host, for bilateral client-server connections (which use \texttt{select}), and finally for multi-party connections.
+\1 Both types \name uses to signify reconfiguration points in the \tunnel stack, \texttt{Switch} and \texttt{Select}, expose a \texttt{reconfigure()} function, shown in Listing~\ref{l:select} line 13.
+\end{outline}
+
+\paragrapha{On a single host}
+\begin{outline}
+\1 The challenge in implementing reconfiguration is switching implementations without forcing the application to re-establish its state. Naturally, individual \tunnels may have state, so when re-configuring a connection \name should allow the new \tunnel to initialize corresponding state.
+\1 We first consider only \texttt{switch} reconfiguration. Recall that \texttt{switch} designates a unilateral \tunnel that the host can safely re-configure without consulting connection peers.
+\1 To safely reconfigure a connection, \name must ensure that there is a switching point such that after the switching point, no connection on any thread accesses the old configuration's state.
+\1 We can implement \texttt{reconfigure()} by protecting the encapsulated connection with a lock. The \texttt{reconfigure()} call simply initializes the new encapsulated connection, locks the connection state and updates it to use the newly initialized connection.
+\begin{minted}{rust}
+fn reconfigure<T>(&mut self, choice: T) where T: /*...*/ {
+  // lock inner state for all conns
+  let inners = self.lock_all_conns();
+  for inner_mut in inners {
+    choice.initialize_state(inner_mut.get_state());
+    inner_mut = choice;
+  }
+  // switching point here: all connections will acquire 
+  // the lock and use the new version.
+}
+impl ChunnelDatapath for /*...*/ {
+  fn send(&self, ms: impl Iterator<Item=Self::Data>) { 
+    self.inner.lock().send(ms)
+  }
+  /* ... */
+}
+\end{minted}
+  \2 The switching point in this implementation is when \texttt{reconfigure} releases the lock.
+  \2 We discuss an optimization to this approach in \S\ref{s:impl}.
+\end{outline}
+
+\paragrapha{Between Two Hosts}
+\begin{outline}
+  \1 Coordinating a re-configuration for a client-server connection is straightforward. The client can simply collect a new \tunnel stack description and send it to the server, just as in the negotiation protocol (\S\ref{s:negotiation}).
+  \1 Meanwhile, the server must listen in parallel with the application for negotiation offer packets. 
+    \2 If the server receives such a packet, it runs the negotiation protocol to pick a \tunnel stack, and returns the stack description to the client.
+  \1 The server and client can then both use the \texttt{switch} mechanism described above to switch \tunnel stacks.
+\end{outline}
+
+\paragrapha{Multi-Party Reconfiguration}
+Recall that a peer in a multi-party connection can propose a reconfiguration to the \tunnel stack in use.
+It is important that all peers in the connection agree on the switching point to a new \tunnel stack. Therefore, to ensure that a single switching point exists, in \name we use two-phase commit to re-configure multi-party connections. 
+If the peer chooses to upgrade, it starts a two-phase commit process to transition its peers to its new preferred stack. Once the two-phase commit completes, all peers reconfigure their connections to use the new stack.
+If peers refuse the new semantics, the new peer returns an error.\footnote{Because all peers must accept the transition for it to commit, a faulty peer cannot force all connection participants to switch stacks.}
+If a new endpoint arrives while an upgrade is in progress, it uses the new stack and waits for the upgrade to commit before attempting to commit any upgrades itself.
+We demonstrate this process in \S\ref{s:casestudies:pubsub}.
+
+\begin{figure*}
+    \centering
+    \includegraphics[width=\textwidth]{img/chunnel-diagram.pdf}
+    \caption{An overview of \name's compile and runtime processing steps.}
+    %\vspace{-.15in}
+    \label{fig:design}
+\end{figure*}
+\eat{
+\subsection{Optimizations}\label{s:model:opt}
+\begin{listing}[t]
+\begin{minted}[linenos, breaklines]{rust}
+let conn1 = tbm::make_stack!(
+     RpcChunnel::new(/*...*/),
+     TLSChunnel::new(/*...*/));
+let conn2 = tbm::make_stack!(
+     RpcWithTLSChunnel::new(/*...*/));
+// Replace occurrences of RpcChunnel with TLSChunnel,
+// with a better performing RpcWithTLSChunnel
+#[tbm::Subst(if [*, RpcChunnel, TLSChunnel, *]
+             then [*, RpcWithTLSChunel, *])]
+pub trait FuseSerializeAndTLS {
+  type Opt;
+  fn fuse_tls_serialize_opt(self) -> Self::Opt;
+}
+\end{minted}
+\caption{A \name optimization pass.\notePanda{Should this be here?}}\label{l:fusionopt}
+\vspace{-5mm}
+\end{listing}
+Similar to applications built using communication libraries, the performance and resource requirements of a \name connection depends on its \tunnel stack. In some cases, two \tunnel stacks that provide identical features might provide very different performance. For example, consider a case where \fIsabelle, a \tunnel developer, creates a set of \tunnels that expose functionality from the gRPC library. In this case, \fIsabelle might implement two \tunnels: an \texttt{RpcChunnel} that uses unencrypted connections and a \texttt{RpcWithTLSChunnel} that leverages gRPC's built-in TLS support to provide encrypted connections. Given these \tunnels, imagine our application developer \fAlice wants a connection that sends encrypted RPC traffic. \fAlice could either use the method \texttt{conn1} of Listing~\ref{l:fusionopt} (Line 1) shows (composing the unencrypted \texttt{RpcChunnel} with a \texttt{TLSChunnel}), or she could use the method \texttt{conn2} (Line 4) shows, using a single \texttt{RpcWithTLSChunnel} \tunnel. While both provide equivalent functionality, \texttt{conn2} has better performance because it allows \fIsabelle and the gRPC developers to perform cross-layer optimizations. As a result, application developers like \fAlice should usually (though, as we explain below, not always) prefer the approach used by \texttt{conn2}.
+
+When \fAlice learns about this optimization, perhaps by reading a blog post from \fOctavia (a \tunnel developer or domain expert), she might want to apply it to her application. 
+A naive approach for doing so would be for her to audit her application code, find all instances of \tunnel stacks composing an RPC \tunnel and a TLS \tunnel, and replace them with the combined \tunnel. This is a tedious process, and \fAlice must correctly make this change for each connection that uses this \tunnel stack. 
+We observe that \name's interface, which makes a connection's entire \tunnel stack explicit and well-structured, provides us with an opportunity to automate this process.
+% \notearvind{can we have this take replacement take the "configuration" as input? if so, we could fold in the constraint that it is not nqsb-TLS as part of config. Also, we can describe at the end of the previous para why conn1 might be preferred in some settings. The idea would be that these complex optimization decisions are made by someone else rather than the programmer.}\notepanda{I am not sure taking configuration is sufficient in this case. We would normally use different types to make this distinction. The main idea was just to say what you said aobut conn1, which I am adding in.}
+
+We show \name's approach to automating optimizations on Listing~\ref{l:fusionopt}, Line 8. In this case, along with her blog post, \fOctavia can publish an \emph{optimization pass}. 
+The optimization pass specifies (via the \texttt{Subst} macro, described in \S\ref{s:impl}) that a sequence of \tunnels (in this case RPC followed by TLS) should be replaced by another sequence (in this case RPC-with-TLS). 
+In our implementation, optimization passes are Rust procedural macros and are applied at compile time. These optimizations analyze all \tunnel stacks in the application, and make substitutions when appropriate. In the example above, this allows \fAlice to adopt \fOctavia's optimization by linking against \fOctavia's optimization pass.
+
+\name assumes that optimization are correct; as long as this is the case, the interface we have described preserves application safety properties. For example, \fAlice might require all encrypted connections to use nqsb-TLS. In our programming model, doing so would require \fAlice to use a different \tunnel (\eg \texttt{NqsbTLSChunnel}) to which the optimization in Listing~\ref{l:fusionopt} would not apply, thus guaranteeing safety. 
+
+However, \name cannot guarantee that optimizations improve performance, \eg an application developer might have finer grained control when using separate RPC and TLS \tunnels (as is done in \texttt{conn1}), and thus in some cases separate \tunnels might result in better performance than using a single fused \tunnel. 
+Thus, we can see that while \name's optimization framework provides an automatic way to correctly apply optimizations to an application, it requires that application developers analyze the impact of the optimization on application performance before applying them to the program. 
+}

@@ -1,0 +1,105 @@
+\documentclass[letterpaper,twocolumn,10pt]{article}
+%\frenchspacing
+\usepackage{usenix}
+% remove the big blob on the first page
+% \renewcommand\footnotetextcopyrightpermission[1]{}
+%\usepackage{balance}
+\input{packages}
+
+% Macros for notes.
+\usepackage[textsize=tiny,textwidth=0.6in]{todonotes}
+\setlength{\marginparwidth}{0.6in}
+
+\newcommand{\allnotes}[1]{}
+% Comment out following line to get rid of all comments.
+\renewcommand{\allnotes}[1]{\textit{#1}}
+\newcommand{\fixme}[1]{\allnotes{\bf\textcolor{red}{[#1]}}}
+\newcommand{\pandainline}[1]{\allnotes{\bf\textcolor{cyan}{[#1]}}}
+
+\newcommand{\notepanda}[1] {\allnotes{\todo[color=cyan!50]{[Panda: #1]}}} 
+\newcommand{\notePanda}[1] {\allnotes{\textcolor{cyan}{[Panda: #1]}}} 
+\newcommand{\noteakshay}[1]{\allnotes{\todo[color=violet!50]{[Akshay: #1]}}}
+\newcommand{\noteakshayinline}[1]{\allnotes{\textcolor{violet}{[Akshay: #1]}}}
+\newcommand{\an}[1]{\noteakshay{#1}}
+%\newcommand{\notearvind}[1]{\allnotes{\textcolor{brown}{[AK: #1]}}}
+\newcommand{\notearvind}[1]{\allnotes{\todo[color=yellow!50]{Arvind: #1}}}
+\newcommand{\ma}[1]{\allnotes{\textcolor{blue}{[MA: #1]}}}
+
+
+\def\ie{{i.e.},\xspace}
+\def\eg{{e.g.},\xspace}
+\def\etc{etc.\xspace}
+\def\etal{et al.\xspace}
+\def\us{$\mu$s\xspace}
+\newcommand{\name}{TBM\xspace} % Bertha
+\newcommand{\tunnel}{Chunnel\xspace}
+\newcommand{\tunnels}{Chunnels\xspace}
+\newcommand{\canonicaladdr}{canonical address}
+\newcommand{\Canonicaladdr}{Canonical address}
+\newcommand{\eat}[1]{}
+\date{}
+%\usepackage{titling}\setlength{\droptitle}{-1cm}
+\hypersetup{pdfstartview=FitH,pdfpagelayout=SinglePage}
+
+\def\Alice{Alice Appwright\xspace}
+\def\Isabelle{Chani Chunnelbuild\xspace}
+\def\Octavia{Ophelia Optimizestack\xspace}
+\def\fAlice{Alice\xspace}
+\def\fIsabelle{Chani\xspace}
+\def\fOctavia{Ophelia\xspace}
+\def\implib{\tunnel-implementation library\xspace}
+\def\optlib{connection optimization library\xspace}
+\def\optlibs{connection optimization libraries\xspace}
+\def\optimization{stack pass\xspace}
+\def\optimizations{stack passes\xspace}
+
+% \setlength\paperheight {11in}
+% \setlength\paperwidth {8.5in}
+% \setlength{\textwidth}{7in}
+% \setlength{\textheight}{9.25in}
+% \setlength{\oddsidemargin}{-.25in}
+% \setlength{\evensidemargin}{-.25in}
+
+\usepackage{fdsymbol}
+\newboolean{anonymous}
+%\setboolean{anonymous}{false}
+% Uncomment to make this into an anonymous paper.
+\setboolean{anonymous}{true}
+\usepackage[normalem]{ulem}
+\newcommand{\changebars}[2]{%
+  [{\color{teal}\begingroup{#1}\endgroup}][{\color{magenta}\sout{#2}}]}
+
+\pagenumbering{arabic}
+
+% \fancyhead{}
+% \raggedbottom
+\begin{document}
+\title{\LARGE Bringing Reconfigurability to the Network Stack}
+\author{\large Paper \#8, 12 pages}
+%\author{Akshay Narayan$^{\varheartsuit}$, Aurojit Panda$^{\spadesuit}$, Mohammad Alizadeh$^{\varheartsuit}$,\\
+%Hari Balakrishnan$^{\varheartsuit}$, Arvind Krishnamurthy$^{\clubsuit}$, Scott Shenker$^{\vardiamondsuit}$\\
+%\textrm{$^{\varheartsuit}$ MIT CSAIL, $^{\spadesuit}$ NYU, $^{\clubsuit}$ University of Washington, $^{\vardiamondsuit}$ UC Berkeley and ICSI}}
+%\renewcommand{\shortauthors}{Akshay Narayan et al.}
+%\pagestyle{plain}
+\maketitle
+\input{abstract}
+
+\sloppy
+\section{Outline}
+\input{outline-new}
+%\input{s1_intro}
+\input{s2_related}
+\input{s3_design}
+\input{s4_reconfig}
+\input{s5_impl}
+%\input{s5_case-studies}
+%\input{s6_discussion}
+\label{p:end}
+\newpage
+%\balance
+% \newcommand{\newblock}{}
+%\bibliographystyle{ACM-Reference-Format}
+% \balance
+\bibliographystyle{abbrv} 
+\bibliography{bibs}
+\end{document}
