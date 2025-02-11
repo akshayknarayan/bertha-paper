@@ -1,4 +1,4 @@
-\usepackage[subtle]{savetrees}
+%\usepackage[subtle]{savetrees}
 
 % hyperref handled in acmart-preload-hook.tex magic file
 %\usepackage[draft=false]{hyperref}
@@ -18,18 +18,19 @@
 \usepackage{graphicx,xcolor,xspace}
 % \usepackage{amsmath,amssymb}
 % \usepackage[square,numbers,sort]{natbib}
-\usepackage{inconsolata} % causes some error?
+%\usepackage{inconsolata} % causes some error with acmart?
+\usepackage{fancyvrb}
 \usepackage[newfloat=true]{minted}
 %\usepackage{minted}
 \usemintedstyle{vs}
 \setminted[rust]{fontsize=\footnotesize}
 %\AtBeginEnvironment{minted}{\dontdofcolorbox}
 %\def\dontdofcolorbox{\renewcommand\fcolorbox[4][]{##4}}
-\usepackage{fancyvrb}
 \usepackage{booktabs}
 \usepackage{tabu}
 \usepackage{tabularx}
-\usepackage{subcaption}
+\usepackage[skip=-5pt]{subcaption}
+%\captionsetup{subfigure}[skip=-5pt}
 \usepackage{paralist}
 \usepackage[hang,flushmargin]{footmisc}
 
@@ -37,11 +38,21 @@
 \usepackage{ifthen}
 
 \usepackage[compact,small]{titlesec}
+\titlespacing{\section}{2pt}{2pt}{2pt}
+\titlespacing{\subsection}{1.5pt}{\parskip}{\parskip}
+\titlespacing{\subsubsection}{1.5pt}{\parskip}{-\parskip}
+%\titlespacing*{\section}
+%{0pt}{5.5ex plus 1ex minus .2ex}{4.3ex plus .2ex}
+%\titlespacing*{\subsection}
+%{0pt}{5.5ex plus 1ex minus .2ex}{4.3ex plus .2ex}
 
-%%\usepackage[inline]{enumitem}
+\usepackage{enumitem}
 %%\usepackage{cite,url}
 % \usepackage[textfont={small,it},aboveskip=-0.8pt,belowskip=-3pt]{caption}
-\usepackage[style=base,textfont={small, bf},belowskip=-4pt, aboveskip=0pt]{caption}
+%\usepackage[style=base,textfont={small, bf},belowskip=-10pt, aboveskip=-10pt]{caption}
+\usepackage{caption}
+\captionsetup[figure]{font={small},labelfont={small,bf},textfont={small,it},belowskip=-8pt, aboveskip=-9pt}
+\captionsetup[table]{font={small},labelfont={small,bf},textfont={small,it},belowskip=-8pt, aboveskip=-9pt}
 %\setlength{\belowcaptionskip}{-15pt} 
 
 %%\usepackage{pbox}
@@ -68,7 +79,20 @@
   \fi
 }
 \makeatother
-% \input{titlemove}
+
+% hack to figure out if a macro expands to empty:
+% https://tex.stackexchange.com/questions/94933/how-to-detect-that-some-macro-expands-to-empty-string-or-spaces-only
+\makeatletter
+{\catcode`\!=8 % funny catcode so ! will be a delimiter
+ \catcode`\Q=3 % funny catcode so Q will be a delimiter
+\long\gdef\given#1{88\fi\Ifbl@nk#1QQQ\empty!}
+\long\gdef\blank#1{88\fi\Ifbl@nk#1QQ..!}% if null or spaces
+\long\gdef\nil#1{\IfN@Ught#1* {#1}!}% if null
+\long\gdef\IfN@Ught#1 #2!{\blank{#2}}
+\long\gdef\Ifbl@nk#1#2Q#3!{\ifx#3}% same as above
+}
+\makeatother
+\def\expblank{\expandafter\blank\expandafter} % additional macro
 
 \definecolor{fgcolor}{rgb}{0.345, 0.345, 0.345}
 \newcommand{\hlnum}[1]{\textcolor[rgb]{0.686,0.059,0.569}{#1}}%

@@ -1,44 +1,29 @@
-\section{Related Work}\label{s:relwork}
+\section{Motivation and Related Work}%
+In this paper, we argue that it is necessary to change application-level network stacks to embrace communication libraries.
+This is because of the following three changes that applications must tackle:
 
-\begin{outline}
-\1 Prior work on reconfigurability has taken two approaches, centered in the operating system.
-    \2 Ksplice~\cite{ksplice https://dl.acm.org/doi/abs/10.1145/1519065.1519085} and Proteos~\cite{proteos-tennenbaum https://dl.acm.org/doi/abs/10.1145/2499368.2451147} focused on live-patching of kernel security vulnerabilities.
-    \2 Nooks~\cite{nooks https://dl.acm.org/doi/abs/10.1145/1047915.1047919} and Shadow drivers~\cite{shadow-drivers https://dl.acm.org/doi/abs/10.1145/1189256.1189257} sought to protect against failure-prone drivers by live-swapping them for different drivers when they failed.
-    \2 Work on VM-PHU~\cite{vm-phu https://dl.acm.org/doi/pdf/10.1145/3447786.3456232} and NetKernel~\cite{netkernel https://dl.acm.org/doi/10.1145/3152434.3152442} sought to provide reconfigurability to VMs at the level of the host OS.
-    \2 Work on live-patching binaries (\eg JIT) seeks to change application behavior at runtime (these approaches generally can't change networking features).
-    \2 We focus on network stack reconfigurability in this paper. While these existing works are promising approaches to adding reconfigurability,
-      \3 (indeed, the approaches and reasoning we adopt for safe datapath reconfiguration are similar to that of Shadow drivers and Proteos)
-    \2 modern applications differ in a few key ways:
-      \3 More relevant functionality is in user-space, \ie essential communication libraries.
-      \3 This functionality often depends on bilateral agreement, \eg a shared serialization format.
-    \2 As a result, we adopt a user-space library approach so that we can capture application-level reconfigurability.
+\paragrapha{The ``Narrow Waist'' has moved up.} While traditionally applications only required TCP/IP connections that they could establish using the socket API, this is no longer the case~\cite{http-narrow-waist}; modern applications need to adopt one of a variety of open-source libraries that implement more advanced communication abstractions that improve network security, simplify application management, and enable better logging and debugging. These libraries differ in their performance, features, and requirements, and thus, the ability to reconfigure which library is used can significantly reduce management and performance overheads for applications.
+For example, applications have several options when choosing how to serialize data, each of which has different tradeoffs:
+Apache Arrow is optimized for fast computation, Capnproto can reduce serialization overheads but requires the machine architecture to be identical between communicating hosts, and Protobufs are more general but sacrifice performance. The best choice varies by workload and deployment and thus requires assumptions beyond what the application developer might know.
 
-\1 Current network stacks support a limited amount of configurability.
-  \2 In Linux, there are a few ways of reconfiguring the network stack's behavior:
-    \3 \texttt{ioctl} and \texttt{sysctl} are mechanisms allowing users to change kernel parameters at runtime.
-    \3 loadable kernel modules or eBPF allow users to interpose additional processing into the kernel.
-    \3 These mechanisms are unilateral (they affect only a single host's behavior) and limited (they can only change a few things).
-  \2 There are multiple proposals which seek to provide \emph{portability}, rather than reconfigurability, across a number of datapaths by implementing an abstraction layer, such as 
-    \3 DPDK~\cite{dpdk} for user-space poll-mode NIC drivers
-    \3 Demikernel~\cite{demikernel} for a number of underlying datapaths including RDMA, DPDK, and the OS kernel while still allowing for OS features like scheduling
-    \3 gRPC~\cite{grpc} for a small selection of serialization and encryption backends
-    \3 Terraform~\cite{terraform} abstracts the APIs of different cloud providers into a common configuration file format.
-    \2 These abstraction layers are useful tools for recompiling applications against different datapath targets (though, as anyone who has used DPDK knows, doing so often involves nontrivial amounts of work to specialize to a new set of available NIC features), but they do not seek to provide live reconfigurability.
-\end{outline}
+\paragrapha{The emergence of deployment-specific offloads.} Most applications today run in virtualized environments (\eg cloud). These environments increasingly offer specialized services, including hardware offloads (\eg Google's offload-optimized PSP encryption or network sequencers such as Hydra~\cite{hydra}), and managed communication services (\eg publish-subscribe) that can improve application performance. To take advantage of this, applications must explicitly be designed to work in these environments. One approach to doing so is to limit where the application can run or to customize and maintain applications for each runtime environment, but these options decrease utility and increase cost. \name's reconfiguration can embrace environment-specific services without limiting an application's deployment or its network logic.
 
-The abstraction we use to implement our reconfigurable network stack \name, \tunnels, is inspired by previous techniques in providing extensibility and flexibility in the operating system and network stack.
-\noteakshay{shorten this part?}
+\paragrapha{Application performance, maintainability, and deployment cost \emph{all} matter.}
+While applications now have stringent performance and efficiency requirements, application developers increasingly emphasize application maintenance burdens and deployment costs. 
+Thus, it is impractical for common developers to produce bespoke application implementations for each possible runtime environment and workload combination. Even if the resulting (often significant~\cite{sqs-to-kafka}) development costs were acceptable, application workloads change dynamically, so a safe method to reconfigure application network stacks is necessary to adapt accordingly. Instead, as we show with \name, reconfiguring a single application implementation can navigate application performance-price tradeoffs without imposing developer burdens. 
 
-\paragrapha{Extensibility.} The motivation for \tunnels is similar to those for techniques in operating systems to support the development of new types of hardware. The Linux kernel's device driver model~\cite{linux-device}, syscalls~\cite{slic}, and networking stack~\cite{tcp-ebpf, tcp-ebpf2} have all been targets for proposals targeting extensibility. Similarly, Click~\cite{click} and OVS~\cite{ovs-extend} describe extensible designs for software routers. Unlike these systems, \name picks between feature implementations at runtime. The x-Kernel Protocol Framework~\cite{xkernel} previously proposed an architecture for an extensible network stack. Similar to \name, the x-Kernel stack supported extensions, but these modules implemented protocols (\eg variants of TCP) rather than \tunnels' communication functions. While both systems are extensible, the type of extensibility differs. Finally, the Microsoft IIS web server library~\cite{msft-iis} expresses applications as a combination of high-level application logic and semantic modules. 
-%In databases, Volcano~\cite{volcano} and EXODUS~\cite{carey1991architecture} proposed an architecture for an extensible query execution system to support new functionality such as query optimizers.\notearvind{fine to skip this.}
+\subsection{Related Work}\label{s:relwork}
+Reconfigurability and extensibility have been extensively studied in the past. 
+Overall, while prior approaches have focused only on the lower levels of the network stack (i.e., below the socket API), \name supports reconfiguration for all layers, including communication libraries. This presents new challenges in ensuring communication safety and compatibility.
 
-Several efforts have also discussed network APIs and extensions that can better support complex network devices, including from active networking~\cite{active-nets} to Netcalls~\cite{netcalls}, DOA~\cite{DOA}, and Serval~\cite{Nordstrm2012ServalAE}. While these approaches allow users to explicitly run code in network devices, \name exposes slices of network functionality that applications are already using in a structured way. In this vein, Freimuth \etal~\cite{tcp-offload}, Eran \etal~\cite{nica}, and Pismenny \etal~\cite{auto-nic-offloads} proposed modifications to network stacks which enable them to take advantage of offloads. While these approaches show promise and are compatible with \name, \name's goal is different: to allow safe composition of mutually-unaware communication libraries.
+\paragrapha{Reconfigurability in OSes} Prior approaches to program reconfiguration and extension rely on patching or replacing code in an executable system:  Ksplice~\cite{ksplice} and Proteos~\cite{proteos} developed approaches to patching kernel code to address security concerns, Nooks~\cite{nooks} and Shadow Drivers~\cite{shadow-drivers} describe approaches to replace drivers to avoid failures, and other systems~\cite{wfpatch, pylive} have provided tools for live-patching running applications. Another line of work, exemplified by VM-PHU~\cite{vm-phu} and NetKernel~\cite{netkernel} develops approaches to reconfigure executing VMs, but without considering communication libraries.
 
-\eat{
-\noteakshay{we can move this to later when we are actually talking about optimizations.}
-\paragrapha{Optimization.} The idea of implementing optimization passes as structured translations is widespread. LLVM optimization passes~\cite{llvm-opt} are implemented as IR-to-IR translations.
-Kohler \etal~\cite{click-opt} adopted a similar approach to optimizing Click router configurations.
-OPT++~\cite{optpp} and EROC~\cite{eroc} express database optimizations as SQL rewrites.
-In machine learning, Tensorflow~\cite{tensorflow-xla}, ONNX~\cite{onnx}, TVM~\cite{tvm}, and FlexFlow~\cite{flexflow} represent models as semantic DAGs and apply optimizations before mapping them to available hardware.
-Finally, in data analytics, Weld~\cite{weld} enables cross-library optimizations by representing programs in a common IR. 
-}
+\paragrapha{Service Mesh} Service meshes~\cite{service-router, envoy, istio} implement communication functionality outside the applications, making it easier to reconfigure and change features such as how connections are encrypted or what data is logged. \name allows similar functionality, but unlike these, implements mechanisms to ensure that communicating endpoints have compatible configuration and to allow applications to vary configuration depending on what endpoint they are connected to.
+
+\paragrapha{Reconfigurability in Traditional Network Stacks}
+A lot of an application's communication functionality is split across the kernel and the user-space (\eg in communication libraries, service proxies, etc.), and its correctness can depend on agreement between endpoints (\eg agreement on serialization format). Therefore, work on reconfigurable network stacks has largely focused on individual pieces of functionality:
+TAPS~\cite{taps} and the Fox project~\cite{biagioni} sought to modularize transport layer functionality.
+The x-Kernel's Protocol Framework~\cite{xkernel} proposed an architecture for an extensible network stack, and Microprotocols~\cite{bhatti} built on this work with a proposal to extend the network stack with higher-level protocols such as atomic multicast.
+Meanwhile, another early-stage workshop paper~\cite{bertha-hotnets} described a uniform abstraction for using offloads in the network stack but without reconfiguration.
+
+\paragrapha{Hardware Portability} Since the early 1960s, many systems have aimed to provide \emph{portability}---rather than reconfigurability---thus allowing the system to work on a variety of hardware. Early examples include Unix V4, which was written in C to enable this. Recent examples include DPDK~\cite{dpdk} (which supports multiple NICs), Demikernel~\cite{demikernel} (which supports multiple network technologies including RDMA and kernel bypass networking), and Terraform~\cite{terraform} for configuring infrastructure across different cloud providers. These approaches allow the program to run on multiple deployments but do not specialize the program to these deployments and might thus carry a performance or efficiency overhead.

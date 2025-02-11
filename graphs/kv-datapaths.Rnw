@@ -1,0 +1,59 @@
+\begin{figure}
+    \centering
+<<kv-datapaths,fig.showtext=TRUE,cache=TRUE,echo=FALSE,message=TRUE,warning=TRUE,fig.width='\\columnwidth',fig.height=3>>=
+library(ggplot2)
+library(showtext)
+font_add_google("IBM Plex Sans")
+showtext_auto()
+
+df <- read.csv("data/kv-mlx5-0a7efa1.csv")
+df$kOps <- df$Ops / 1e3
+df <- df[df$kOps == 80 | df$kOps == 160 | df$kOps == 240 | df$kOps == 320 | df$kOps == 400 | df$kOps == 480 | df$kOps == 560 | df$kOps == 640 | df$kOps == 720 | df$kOps == 800,]
+df <- df[df$ShardType == "client",]
+order <- c(
+    "dpdkmulti_nochunnels",
+    "dpdkmulti_nochunnels_conns",
+    "dpdkmulti"
+)
+df <- df[df$Datapath %in% order,]
+
+labs <- c(
+    "dpdkmulti_nochunnels" = "No Ch.-No Cn.",
+    "dpdkmulti_nochunnels_conns" = "No Ch.",
+    "dpdkmulti" = "Full"
+)
+
+df$Datapath = factor(as.factor(df$Datapath), levels=order)
+df$lab <- labs[as.character(df$Datapath)]
+df$lab_pos <- pmin(df$Latency_us_0.95, 275)
+
+
+ggplot(df, aes(x=as.factor(kOps), label=lab, color=Datapath, group=interaction(Datapath,kOps))) +
+geom_errorbar(aes(ymin=Latency_us_0.05, ymax = Latency_us_0.95), position="dodge") +
+geom_crossbar(aes(ymin=Latency_us_0.25, y=Latency_us_0.5, ymax = Latency_us_0.75), fatten=0.5, fill="#ffffff", position="dodge") +
+geom_text(aes(y=lab_pos), hjust=-0.1, vjust=0, size=4, angle=90, position=position_dodge(width=0.9), show.legend=FALSE) +
+scale_color_manual(
+    labels = labs,
+    values = c(
+        "dpdkmulti_nochunnels" = "#6b9dc2",
+        "dpdkmulti_nochunnels_conns" = "#41b6c4",
+        "dpdkmulti" = "#225ea8"
+    ),
+) +
+scale_y_continuous(breaks = c(10, 20, 30, 40)) +
+coord_cartesian(ylim=c(0, 50)) +
+theme_minimal() +
+xlab("Offered Load kOp/sec") + ylab("Request Latency (μs)") +
+#facet_wrap(~Commit) +
+theme(
+    legend.position = "none",
+    text = element_text(size=16, family="IBM Plex Sans", face="bold"),
+    axis.text.y = element_text(size=16, family="IBM Plex Sans"),
+    axis.text.x = element_text(size=16, family="IBM Plex Sans"),
+    panel.grid.minor=element_line(colour="gray"),
+    panel.grid.major=element_line(colour="gray"),
+)
+@
+\caption{``Full'' shows the KV-store application using a multi-threaded DPDK datapath. ``No Ch.'' removes the use of Chunnels and negotiation, and ``No Ch.-No Cn.'' further removes connection multiplexing and demultiplexing.} \label{f:kv-datapaths}
+\end{figure}
+%\newcommand{\foo}{\Sexpr{round(r_variable, 2)}\xspace}

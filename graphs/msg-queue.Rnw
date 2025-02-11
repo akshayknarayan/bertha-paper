@@ -1,0 +1,90 @@
+\begin{figure}
+    \centering
+<<msg-queue,fig.showtext=TRUE,cache=TRUE,echo=FALSE,message=FALSE,warning=FALSE,fig.width='\\columnwidth',fig.height=6>>=
+library(ggplot2)
+library(dplyr)
+library(forcats)
+library(showtext)
+font_add_google("IBM Plex Sans")
+showtext_auto()
+
+df <- read.csv("data/msg-queue-latencies.csv")
+
+order <- c(
+           "BestEffort", 
+           "AtMostOnce", 
+           "Ordered:10", 
+           "Ordered:5", 
+          # "Ordered:2", 
+           "Ordered:1")
+df$ordered <- match(df$mode, order)
+
+modes <- c(
+    "client.1" = "Client-side, 1 Receiver",
+    "service.1" = "Service-side, 1 Receiver",
+#    "service.2" = "Service-side, 2 Receivers",
+#    "service.5" = "Service-side, 5 Receivers",
+    "service.10" = "Service-side, 10 Receivers"
+)
+
+f <- function(x) {
+    r <- quantile(x, probs = c(0.05, 0.25, 0.5, 0.75, 0.95))
+    names(r) <- c("ymin", "lower", "middle", "upper", "ymax")
+    r
+}
+
+df <- df[df$inter_request_ms == 75,]
+df$req_latency_ms <- df$req_latency_us / 1e3
+df <- df[df$mode != "Ordered:2" & df$num_receivers != 2 & df$num_receivers != 5 & df$provider != "gcp",]
+df$facet <- interaction(df$impl, df$num_receivers)
+ggplot(df, aes(x=factor(ordered), 
+               y=req_latency_ms, 
+               colour=provider, group=interaction(provider, mode))) + 
+    stat_summary(fun.data = f, geom="boxplot", position=position_dodge(width=1)) + 
+    scale_x_discrete(labels = c(
+        "1" = "BestEffort", 
+        "2" = "AtMostOnce", 
+        "3" = "Ordered:10", 
+        "4" = "Ordered:5", 
+#        "5" = "Ordered:2", 
+        "5" = "Ordered:1")) +
+    scale_colour_brewer(type="qual", palette=6, labels = c("aws" = "AWS", "azure" = "Azure", "kafka" = "Kafka")) +
+    facet_wrap(~interaction(impl, num_receivers), ncol=1, scales="free_y", labeller = as_labeller(modes)) + 
+    xlab("") + ylab("Message Latency (ms)") +
+    theme_minimal() +
+    theme(
+        legend.position = "bottom",
+        legend.title = element_blank(),
+        text = element_text(size=16, family="IBM Plex Sans", face="bold"),
+        axis.text.x = element_text(size=16, family="IBM Plex Sans", face="bold"),
+        axis.text.y = element_text(size=12, family="IBM Plex Sans", face ="bold")
+    ) +
+    coord_flip(ylim=c(0, 200))
+
+#gcp <- df[df$provider == "gcp",]
+#
+#gcpNum <- function(facet, mode) {
+#    round(quantile(gcp[gcp$facet == facet & gcp$mode == mode,]$req_latency_ms, probs=c(0.5)), 0)
+#}
+
+aws <- df[df$provider == "aws",]
+awsNum <- function(facet, mode) {
+    round(quantile(aws[aws$facet == facet & aws$mode == mode,]$req_latency_ms, probs=c(0.5)), 0)
+}
+@
+    \caption{Message queue providers have different performance characteristics and semantics. ``Ordered:n'' means ordering among n groups.} \label{f:msgqueue}
+    \vspace{-5pt}
+\end{figure}
+\newcommand{\awsImprovementPct}{\Sexpr{round(100 * (1 - (awsNum("client.1","Ordered:1") / awsNum("service.1","Ordered:1"))), 0)}}
+
+%%
+%%\begin{table}
+%%\begin{tabular}{c|c|c|c|c|c}
+%%                           & Ordered:1                                  & Ordered:5                                  & Ordered:10                                  & AtMostOnce                                  & BestEffort                                  \\
+%%Client-side, 1 Receiver    &  \Sexpr{gcpNum("client.1","Ordered:1")}    &  \Sexpr{gcpNum("client.1","Ordered:5")}    &  \Sexpr{gcpNum("client.1","Ordered:10")}    &  \Sexpr{gcpNum("client.1","AtMostOnce")}    &  \Sexpr{gcpNum("client.1","BestEffort")}    \\
+%%Service-side, 1 Receiver   &  \Sexpr{gcpNum("service.1","Ordered:1")}   &  \Sexpr{gcpNum("service.1","Ordered:5")}   &  \Sexpr{gcpNum("service.1","Ordered:10")}   &  \Sexpr{gcpNum("service.1","AtMostOnce")}   &  ---   \\
+%%Service-side, 10 Receivers &  \Sexpr{gcpNum("service.10","Ordered:1")}  &  \Sexpr{gcpNum("service.10","Ordered:5")}  &  \Sexpr{gcpNum("service.10","Ordered:10")}  &  \Sexpr{gcpNum("service.10","AtMostOnce")}  &  ---  \\
+%% 
+%%\end{tabular}
+%%\end{table}
+%\newcommand{\foo}{\Sexpr{round(r_variable, 2)}\xspace}

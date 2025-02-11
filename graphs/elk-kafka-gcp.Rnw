@@ -1,0 +1,46 @@
+\begin{figure}
+    \centering
+<<elk-kafka-gcp,fig.showtext=TRUE,cache=TRUE,echo=FALSE,message=FALSE,warning=FALSE,fig.width='\\columnwidth',fig.height=2.5>>=
+library(ggplot2)
+library(showtext)
+font_add_google("IBM Plex Sans")
+showtext_auto()
+
+lat_df <- read.csv("data/elk-kafka-gcp.csv")
+abbrvs <- c("with-kafka" = "Kafka", "without-kafka" = "GCP\nPub/Sub")
+lat_df$abbrv_labs <- abbrvs[as.character(lat_df$pubsub.kafka)]
+
+ggplot(lat_df, aes(
+    x=as.factor(producer.msg.interarrival.ms),
+    colour=lat_df$pubsub.kafka,
+    fill="a",
+    label=lat_df$abbrv_labs,
+    #group=as.factor(producer.msg.interarrival.ms)
+    )) +
+    geom_errorbar(aes(ymin=lat_df$"X0.05", ymax=lat_df$"X0.95"), 
+                  width=0.5,
+                  position=position_dodge2(width=0.5, preserve="single")) +
+    geom_crossbar(aes(ymin=lat_df$"X0.25", y=lat_df$"X0.5", ymax=lat_df$"X0.75"), 
+                  width=0.5,
+                  position=position_dodge2(width=0.5, preserve="single")) +
+    geom_text(aes(y=lat_df$"X0.95"), angle=90, hjust=-0.1, position=position_dodge2(width=0.5, preserve="single"), show.legend=FALSE) +
+    scale_x_discrete(limits=c("100", "50", "25", "10")) +
+    scale_color_brewer(type="qual", palette=2) +
+    #scale_color_manual(values = c("#33a02c", "#377eb8"), labels = c("client" = "Client-Side", "server" = "Server-Side")) + 
+    scale_fill_manual(values=c("#ffffff"), guide=FALSE) +
+    xlab("Batch Interarrival (ms)") + ylab("Processing Delay (ms)") +
+    theme_minimal() +
+    theme(
+        legend.position = "none",
+        legend.title = element_blank(),
+        text = element_text(size=16, family="IBM Plex Sans", face="bold"),
+        axis.text.y = element_text(size=16, family="IBM Plex Sans"),
+        axis.title.y = element_text(hjust=0.8),
+        panel.grid.minor=element_line(colour="gray"),
+        panel.grid.major=element_line(colour="gray")
+    )
+@
+    \caption{The ingesters and producers negotiate whether to use Kafka or GCP Pub/Sub. Here, we force the connection to take either choice, respectively, to demonstrate the performance tradeoffs involved.} \label{f:elk-kafka-gcp}
+\vspace{-10pt}
+\end{figure}
+%\newcommand{\foo}{\Sexpr{round(r_variable, 2)}\xspace}

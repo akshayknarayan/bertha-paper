@@ -1,7 +1,9 @@
 \begin{abstract}
-\fixme{TODO}
-    
-\eat{Most modern applications access the network using communication libraries rather than traditional network APIs. This is because the current network stack is not extensible and hence cannot support the rich variety of connections, including ones that encrypt or serialize data, modern applications use. However, most communication libraries are not designed to compose with other libraries, and this limits their use.
-Additionally, many communication libraries can only be used in specific deployments, and the use of these libraries impedes portability. In this paper, we argue that to resolve these shortcomings, we need an extensible and runtime-reconfigurable network stack. We propose a design for such a stack and prototype our design in a system named \name. We demonstrate the generality and benefit of our design using three case studies.
-}
+
+Improving an application's performance and efficiency often requires specializing its use of network functionality to its runtime environment depending on where it runs, the requests it serves, and its performance goals.
+Specializing applications in this way is challenging because developers need to choose the libraries they use when writing their program and cannot easily change them at runtime.
+This paper thus introduces \name, which 
+lets applications change communication library implementations
+at runtime without limiting developer flexibility in the choice of communication functions.
+\name allows applications to safely use optimized communication primitives (including ones with deployment limitations) without limiting deployability. Our evaluation shows cases where this enables specializations resulting in $16\times$ higher throughput and $63\%$ lower latency than current general-purpose approaches while imposing minimal overheads relative to hand-optimized versions that use deployment-specific communication primitives.
 \end{abstract}

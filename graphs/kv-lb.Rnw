@@ -1,0 +1,47 @@
+\begin{figure}
+    \centering
+<<kvlb-opt,fig.showtext=TRUE,cache=TRUE,echo=FALSE,message=FALSE,warning=FALSE,fig.width='\\columnwidth',fig.height=2.5>>=
+library(ggplot2)
+library(showtext)
+font_add_google("IBM Plex Sans")
+showtext_auto()
+
+df <- read.csv("data/kvlb-quantiles-1883ee8-79b6c33.csv")
+df <- df[(df$Commit == "kvlb-79b6c33" | df$Commit == "kvlb-1883ee8") & df$ShardType == "server" & df$Concurrency == 4,]
+df$kOps <- df$Ops / 1e3
+
+abbrv <- c(
+    "kvlb-79b6c33" = "Opt.",
+    "kvlb-1883ee8" = "No-Opt."
+)
+df$abbrv_lab <- abbrv[as.character(df$Commit)]
+
+ggplot(df, aes(x=kOps, colour=Commit, fill="a", label=abbrv_lab, group=interaction(Commit,Ops))) +
+    geom_errorbar(aes(ymin=Latency_us_0.05, ymax = Latency_us_0.95), position=position_dodge2(width=0.9, preserve="single")) +
+    geom_crossbar(aes(ymin=Latency_us_0.25, y=Latency_us_0.5, ymax = Latency_us_0.75), position=position_dodge2(width=0.9, preserve="single")) +
+    geom_text(aes(y=Latency_us_0.75), hjust=-0.2, angle=90, position=position_dodge(width=15), show.legend=FALSE) +
+    coord_cartesian(ylim=c(0, 1000)) +
+    xlab("Offered Load kOp/sec") + ylab("Request Latency (μs)") +
+    scale_colour_manual(labels = c(
+        "kvlb-79b6c33" = "Serde Optimization",
+        "kvlb-1883ee8" = "No Serde Optimization"
+    ),
+    values = c(
+        "kvlb-79b6c33" = "#ff7f00",
+        "kvlb-1883ee8" = "#984ea3"
+    )) + 
+    scale_fill_manual(values=c("#ffffff"), guide=FALSE) +
+    theme_minimal() +
+    theme(
+        legend.position = "top",
+        legend.title = element_blank(),
+        text = element_text(size=16, family="IBM Plex Sans", face="bold"),
+        axis.text.y = element_text(size=16, family="IBM Plex Sans"),
+        panel.grid.minor=element_line(colour="gray"),
+        panel.grid.major=element_line(colour="gray")
+    )
+@
+    \caption{Here, shards are on separate machines and the sharder forwards requests over the network. Applying an optimization that skips serialization and deserialization helps server-sharding to scale better.} \label{f:kvlb}
+    \vspace{-5pt}
+\end{figure}
+%\newcommand{\foo}{\Sexpr{round(r_variable, 2)}\xspace}

@@ -1,8 +1,46 @@
-\documentclass[letterpaper,twocolumn,10pt]{article}
-%\frenchspacing
-\usepackage{usenix}
+\documentclass[sigconf,twocolumn,review,9pt]{acmart}
+%\documentclass[letterpaper,twocolumn,10pt]{article}
+%\usepackage{usenix2019_v3}
+%\documentclass[sigconf,10pt]{acmart}
+\frenchspacing
+
+% Make ACM less nationalistic
+\makeatletter
+\def\@ACM@checkaffil{% Only warnings
+    \if@ACM@instpresent\else
+    \ClassWarningNoLine{\@classname}{No institution present for an affiliation}%
+    \fi
+    \if@ACM@citypresent\else
+    \ClassWarningNoLine{\@classname}{No city present for an affiliation}%
+    \fi
+    \if@ACM@countrypresent\else
+        \ClassWarningNoLine{\@classname}{No country present for an affiliation}%
+    \fi
+}
+\makeatother
+
+
+%\usepackage{usenix}
 % remove the big blob on the first page
-% \renewcommand\footnotetextcopyrightpermission[1]{}
+\renewcommand\footnotetextcopyrightpermission[1]{}
+\settopmatter{printacmref=false}
+
+% Add CCR footer
+\usepackage{fancyhdr}
+\fancypagestyle{plain}{%
+   \fancyhf{} %
+   \fancyfoot[L]{ACM SIGCOMM Computer Communication Review}%
+   \fancyfoot[R]{Volume 48 Issue 1, January 2018}%
+}
+\pagestyle{plain}
+
+% Add CCR footer on first page
+\fancypagestyle{firstpagestyle}{%
+   \fancyhf{} %
+   \fancyfoot[L]{ACM SIGCOMM Computer Communication Review}%
+   \fancyfoot[R]{Volume 48 Issue 1, January 2018}%
+}
+
 %\usepackage{balance}
 \input{packages}
 
@@ -17,14 +55,24 @@
 \newcommand{\pandainline}[1]{\allnotes{\bf\textcolor{cyan}{[#1]}}}
 
 \newcommand{\notepanda}[1] {\allnotes{\todo[color=cyan!50]{[Panda: #1]}}} 
+\newcommand{\notehari}[1] {\allnotes{\todo[color=cyan!50]{[HB: #1]}}} 
 \newcommand{\notePanda}[1] {\allnotes{\textcolor{cyan}{[Panda: #1]}}} 
 \newcommand{\noteakshay}[1]{\allnotes{\todo[color=violet!50]{[Akshay: #1]}}}
 \newcommand{\noteakshayinline}[1]{\allnotes{\textcolor{violet}{[Akshay: #1]}}}
 \newcommand{\an}[1]{\noteakshay{#1}}
+\newcommand{\hb}[1]{\notehari{#1}}
 %\newcommand{\notearvind}[1]{\allnotes{\textcolor{brown}{[AK: #1]}}}
 \newcommand{\notearvind}[1]{\allnotes{\todo[color=yellow!50]{Arvind: #1}}}
 \newcommand{\ma}[1]{\allnotes{\textcolor{blue}{[MA: #1]}}}
+%\newcommand{\changebars}[2]{%
+%  [{\color{teal}\begingroup{#1}\endgroup}][{\color{magenta}\sout{#2}}]}
 
+\if\expblank{\allnotes{a}}%
+\newcommand{\changebars}[2]{#2}
+\else
+\newcommand{\changebars}[2]{%
+  \allnotes{[{\color{teal}\begingroup{#1}\endgroup}}][{\color{magenta}\sout{#2}}]}
+\fi
 
 \def\ie{{i.e.},\xspace}
 \def\eg{{e.g.},\xspace}
@@ -41,59 +89,72 @@
 %\usepackage{titling}\setlength{\droptitle}{-1cm}
 \hypersetup{pdfstartview=FitH,pdfpagelayout=SinglePage}
 
-\def\Alice{Alice Appwright\xspace}
-\def\Isabelle{Chani Chunnelbuild\xspace}
-\def\Octavia{Ophelia Optimizestack\xspace}
-\def\fAlice{Alice\xspace}
-\def\fIsabelle{Chani\xspace}
-\def\fOctavia{Ophelia\xspace}
-\def\implib{\tunnel-implementation library\xspace}
-\def\optlib{connection optimization library\xspace}
-\def\optlibs{connection optimization libraries\xspace}
-\def\optimization{stack pass\xspace}
-\def\optimizations{stack passes\xspace}
-
 % \setlength\paperheight {11in}
 % \setlength\paperwidth {8.5in}
-% \setlength{\textwidth}{7in}
-% \setlength{\textheight}{9.25in}
+%\setlength{\textwidth}{6.25in}
+%\setlength{\textheight}{9in}
 % \setlength{\oddsidemargin}{-.25in}
 % \setlength{\evensidemargin}{-.25in}
 
 \usepackage{fdsymbol}
 \newboolean{anonymous}
-%\setboolean{anonymous}{false}
+\setboolean{anonymous}{false}
 % Uncomment to make this into an anonymous paper.
-\setboolean{anonymous}{true}
+%\setboolean{anonymous}{true}
 \usepackage[normalem]{ulem}
-\newcommand{\changebars}[2]{%
-  [{\color{teal}\begingroup{#1}\endgroup}][{\color{magenta}\sout{#2}}]}
 
 \pagenumbering{arabic}
+
+\begin{CCSXML}
+<ccs2012>
+<concept>
+<concept_id>10003033.10003034.10003038</concept_id>
+<concept_desc>Networks~Programming interfaces</concept_desc>
+<concept_significance>500</concept_significance>
+</concept>
+</ccs2012>
+\end{CCSXML}
+
+\ccsdesc[500]{Networks~Programming interfaces}
+\keywords{Network Stack}
 
 % \fancyhead{}
 % \raggedbottom
 \begin{document}
-\title{\LARGE Bringing Reconfigurability to the Network Stack}
-\author{\large Paper \#8, 12 pages}
-%\author{Akshay Narayan$^{\varheartsuit}$, Aurojit Panda$^{\spadesuit}$, Mohammad Alizadeh$^{\varheartsuit}$,\\
-%Hari Balakrishnan$^{\varheartsuit}$, Arvind Krishnamurthy$^{\clubsuit}$, Scott Shenker$^{\vardiamondsuit}$\\
-%\textrm{$^{\varheartsuit}$ MIT CSAIL, $^{\spadesuit}$ NYU, $^{\clubsuit}$ University of Washington, $^{\vardiamondsuit}$ UC Berkeley and ICSI}}
-%\renewcommand{\shortauthors}{Akshay Narayan et al.}
-%\pagestyle{plain}
-\maketitle
+\title{Embracing Communication Libraries in the Network Stack}
+\author{Akshay Narayan}
+\affiliation{\institution{Brown University, USA}}
+\email{akshayn@brown.edu}
+\author{Aurojit Panda}
+\affiliation{\institution{NYU, USA}}
+\email{apanda@cs.nyu.edu}
+\author{Mohammad Alizadeh}
+\affiliation{\institution{MIT CSAIL, USA}} 
+\email{alizadeh@csail.mit.edu}
+\author{Hari Balakrishnan}
+\affiliation{\institution{MIT CSAIL, USA}} 
+\email{hari@csail.mit.edu}
+\author{Arvind Krishnamurthy}
+\affiliation{\institution{University of Washington, USA}} 
+\email{arvind@cs.washington.edu}
+\author{Scott Shenker}
+\affiliation{\institution{UC Berkeley and ICSI, USA}} 
+\email{shenker@icsi.berkeley.edu}
+\renewcommand{\shortauthors}{Akshay Narayan et al.}
+\pagestyle{plain}
 \input{abstract}
+\maketitle
 
 \sloppy
-\section{Outline}
-\input{outline-new}
-%\input{s1_intro}
+% \input{s1_intro}
+\input{s1_intro-alt}
 \input{s2_related}
 \input{s3_design}
 \input{s4_reconfig}
 \input{s5_impl}
-%\input{s5_case-studies}
-%\input{s6_discussion}
+\input{s6_applications}
+\input{s7_eval}
+\input{s8_discussion}
 \label{p:end}
 \newpage
 %\balance
@@ -102,4 +163,5 @@
 % \balance
 \bibliographystyle{abbrv} 
 \bibliography{bibs}
+\input{artifact-appendix}
 \end{document}

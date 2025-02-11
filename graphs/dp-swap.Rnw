@@ -1,0 +1,54 @@
+\begin{figure}
+    \centering
+<<dp-swap,fig.showtext=TRUE,cache=TRUE,compress=TRUE,echo=FALSE,message=FALSE,warning=FALSE,fig.width='\\columnwidth',fig.height=3>>=
+library(ggplot2)
+library(showtext)
+font_add_google("IBM Plex Sans")
+showtext_auto()
+
+df <- read.csv("data/dpswap-68f71c8.csv")
+df$send_time_s <- df$time_bin / 10
+
+ggplot(df, aes(x=send_time_s, color=datapath, group=interaction(send_time_s, datapath))) +
+    geom_errorbar(aes(ymin=maybe_rtt_us_0.05, ymax = maybe_rtt_us_0.95), position="dodge") +
+    geom_crossbar(aes(ymin=maybe_rtt_us_0.25, y=maybe_rtt_us_0.5, ymax = maybe_rtt_us_0.75), position="dodge") +
+    geom_text(aes(x = 1.5, y = 50, label = "DPDK\nMulti Thread"), color="black", size=6) +
+    geom_text(aes(x = 4.75, y = 60, label = "DPDK\nSingle Thread"), color="black", size=6) +
+    scale_color_manual(values = c("dp" = "#1f78b4", "mux" = "#e31a1c"), labels = c("dp" = "Lock-Free", "mux" = "Lock")) + 
+    scale_fill_manual(values=c("#ffffff"), guide=FALSE) +
+    coord_cartesian(ylim=c(0,100)) +
+    xlab("Time (s)") + ylab("RTT (μs)") +
+    theme_minimal() +
+    theme(
+        legend.position = c(0.9, 0.9),
+        legend.title = element_blank(),
+        text = element_text(size=16, family="IBM Plex Sans", face="bold"),
+        axis.text.y = element_text(size=16, family="IBM Plex Sans"),
+        panel.grid.minor=element_line(colour="gray"),
+        panel.grid.major=element_line(colour="gray")
+    )
+
+before_swap_dp <-  df[df$time_bin < 30 & df$datapath == "dp",]
+before_swap_mux <- df[df$time_bin < 30 & df$datapath == "mux",]
+after_swap_dp <-   df[df$time_bin > 40 & df$datapath == "dp",]
+after_swap_mux <-  df[df$time_bin > 40 & df$datapath == "mux",]
+during_swap_dp <-  df[df$time_bin > 30 & df$time_bin < 40 & df$datapath == "dp",]
+during_swap_mux <- df[df$time_bin > 30 & df$time_bin < 40 & df$datapath == "mux",]
+
+before_swap_dp_median_rtt_us  <- round(quantile(before_swap_dp$maybe_rtt_us_0.5, probs=c(0.5), na.rm=TRUE), 0)   
+after_swap_dp_median_rtt_us   <- round(quantile(after_swap_dp$maybe_rtt_us_0.5, probs=c(0.5), na.rm=TRUE), 0)
+during_swap_dp_median_rtt_us  <- round(quantile(during_swap_dp$maybe_rtt_us_0.5, probs=c(0.5), na.rm=TRUE), 0)
+before_swap_mux_median_rtt_us <- round(quantile(before_swap_mux$maybe_rtt_us_0.5, probs=c(0.5), na.rm=TRUE), 0)   
+after_swap_mux_median_rtt_us  <- round(quantile(after_swap_mux$maybe_rtt_us_0.5, probs=c(0.5), na.rm=TRUE), 0)   
+during_swap_mux_median_rtt_us <- round(quantile(during_swap_mux$maybe_rtt_us_0.5, probs=c(0.5), na.rm=TRUE), 0)
+@
+    \caption{\name can swap a connection's datapath at runtime without disrupting application state. In this example, we change a server from a multi-threaded DPDK datapath to one that spin-polls only on one thread.} \label{f:dp-swap}
+\vspace{-10pt}
+\end{figure}
+%\newcommand{\foo}{\Sexpr{round(r_variable, 2)}\xspace}
+\newcommand{\beforeSwapDpMedianRttUs} {\Sexpr{before_swap_dp_median_rtt_us }}
+\newcommand{\afterSwapDpMedianRttUs}  {\Sexpr{after_swap_dp_median_rtt_us  }}
+\newcommand{\duringSwapDpMedianRttUs} {\Sexpr{during_swap_dp_median_rtt_us }}
+\newcommand{\beforeSwapMuxMedianRttUs}{\Sexpr{before_swap_mux_median_rtt_us}}
+\newcommand{\afterSwapMuxMedianRttUs} {\Sexpr{after_swap_mux_median_rtt_us }}
+\newcommand{\duringSwapMuxMedianRttUs}{\Sexpr{during_swap_mux_median_rtt_us}}

@@ -2,14 +2,14 @@
 
 TARGETS = bertha-main
 
-TEXFILES = $(wildcard *.tex)
+TEXFILES = $(wildcard s*.tex)
 KNITRFILES = $(wildcard graphs/*.Rnw)
 KNITRTARGETS = $(subst graphs/,,$(KNITRFILES:.Rnw=.tex))
 PDFS = $(addsuffix .pdf,$(TARGETS))
 
 all: $(PDFS)
 
-%.pdf: %.tex $(TEXFILES) $(KNITRTARGETS) bibs.bib
+%.pdf: %.tex packages.tex $(TEXFILES) $(KNITRTARGETS) bibs.bib
 	pdflatex -shell-escape $*.tex
 	bibtex $*
 	pdflatex -shell-escape $*.tex

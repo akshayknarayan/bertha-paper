@@ -1,67 +1,85 @@
-\section{Implementation}\label{s:impl}
-Next, we describe \name's implementation, including some performance optimizations. We evaluate our implementation's overheads and the impact of these optimizations in  \S\ref{s:casestudies:overheads}. 
+\section{\name Extensions}\label{s:impl}
+We implemented \name in Rust. While our implementation uses several Rust features, including traits, async\footnote{
+We implement most \tunnel operations, including \texttt{connect\_wrap()}, \texttt{send()}, and \texttt{recv()}, as async functions. We elide this (as well as Rust's lifetime annotations) in code listings for clarity. We use the popular Tokio~\cite{tokio-rs} async runtime for scheduling the resulting coroutines.
+}, and the type system, we believe our ideas are more general and can be implemented using similar features and metaprogramming support in other languages. 
+For example, we believe C++ templates, Racket macros, and Go's reflection features would all allow us to implement the features we have described in those languages.
 
-\subsection{Optimizations}\label{s:impl:optimizations}
+We implement \tunnel stacks with a structure similar to Lisp's \texttt{cons}. We represent \texttt{select} simply as a struct that contains both branches. 
+Only unilateral \texttt{select}s implement \texttt{connect\_wrap}; \name uses a Rust enum to represent the two choices and returns an instance of this enum.
+This enum represents a limited form of dynamic dispatch; at runtime, the connection dispatches to the appropriate implementations of the \texttt{send()} and \texttt{recv()} functions based on the enum's variant.
+Multilateral \texttt{select}s cannot directly implement \texttt{connect\_wrap}, since they must use negotiation to pick an implementation branch.
+Once the negotiation process returns a choice, the datapath for these multilateral \texttt{select}s is the same as the unilateral case.
+We implemented \name's core libraries in \textasciitilde$5,000$ lines of Rust, including the negotiation protocol (of those, \textasciitilde$4,000$ lines).
 
-\paragrapha{Zero-RTT Negotiation.}
-As we note in \S\ref{s:negotiation}, runtime-reconfigurability requires agreement, and hence endpoints must communicate before they can transfer data. The point-to-point protocol described in \S\ref{s:negotiation} completes in one RTT. While this RTT can also be simultaneously used by other protocols, \eg TLS, that need a setup phase, it does lead to a modest increase in connection establishment time. To address this, the \name implements includes an additional optimization that allows connections to be reestablished without additional negotiation, thus reducing overheads for applications that use many short-lived connections. Our approach to doing so is inspired by QUIC's zero-RTT~\cite{quic} connection establishment.
+For the remainder of this section, we describe two optimizations we implemented in \name: zero-rtt negotiation (\S\ref{s:impl:zerortt}), and lock-free single-host reconfiguration (\S\ref{s:impl:fast-reconfig}).
 
-Zero-RTT negotiation requires the client to remember the datapath stack used by previous connections and re-use it when reconnecting. We modify the \texttt{connect} call to do so by having the client send the server a zero-RTT negotiation message when it knows of a previously negotiated stack and then instantiating that stack. The client can send data once the stack has been instantiated. When the server receives a zero-RTT negotiation message, it checks if the previously negotiated stack can still be used. If so, the server re-initiates the stack and uses it to process all subsequent data. If, however, the server cannot use the stack for some reason, it sends the client a message indicating that negotiation has failed and proposing a new stack. If \name on the client receives such a message indicating negotiation failure, it tears down the existing stack and instantiates the stack included in the failure message.
+\subsection{Zero-RTT Negotiation}\label{s:impl:zerortt}
+As we note in \S\ref{s:negotiation}, runtime-reconfigurability requires agreement, and hence endpoints must communicate before they can transfer data. The point-to-point protocol described in \S\ref{s:negotiation} completes in one RTT. 
+To address this, the \name implements an additional optimization that allows clients to reestablish connections without additional negotiation, thus reducing overheads for applications that use many short-lived connections. Our approach to doing so is inspired by QUIC's zero-RTT~\cite{quic} connection establishment.
 
-\paragrapha{Faster Reconfiguration}
+Zero-RTT negotiation requires the client to remember the datapath stack used by previous connections and re-use it when reconnecting. 
+The client sends the server a zero-RTT negotiation message when it knows of a previously negotiated stack and then immediately instantiates that stack; the client can then send data. 
+When the server receives a zero-RTT negotiation message, it checks if the previously negotiated stack can still be used. If so, the server re-initiates the stack and uses it to process all subsequent data (including any in-flight data from the client). If, however, the server cannot use the stack, it sends the client a message indicating that the negotiation has failed and proposes a new stack. If \name on the client receives such a message indicating negotiation failure, it tears down the existing stack and instantiates the stack included in the failure message instead.
 
-\begin{outline}
-\1 The approach to implementing \texttt{reconfigure} we showed in \S\ref{s:impl-reconfig} unfortunately must take a lock on every call to \texttt{send()} and \texttt{recv()}. This harms performance, as we show in Table \fixme{microbenchmark measuring time to swap + send/recv latency for lock vs unsafecell}.
-  \2 This approach is nevertheless simple, and we use it for cases where performance is not critical such as \tunnels calling into cloud publish-subscribe services where latency is not critical.
-\1 To achieve better performance in the common case where there is no reconfiguration, we observe that we can obtain a switching point simply by synchronizing all threads.
-\begin{minted}{rust}
-fn reconfigure<T>(&mut self, choice: T) where T: /*...*/ {
-  self.swap_now.store(true); // use CPU-provided atomic operation
-  self.barrier.wait();
-  for c in self.conns {
-    c.reconfig.send(choice.init_state(c.get_state()));
-  }
-  // switching point here: we barrier-synchronized all threads 
-  // + after the barrier they waited on the reconfig channel.
-  self.swap_now.store(false);
-}
-impl ChunnelDatapath for /*...*/ {
-  fn send(&self, ms: impl Iterator<Item=Self::Data>) { 
-    if self.swap_now.load() { // CPU-provided atomic operation 
-      self.barrier.wait();
-      // this mutation using a non-mutable reference is safe 
-      // because of the synchronization above.
-      unsafe { self.inner = self.reconfig.recv() };
-    } else if let r = self.reconfig.try_recv() {
-      // this mutation is safe because a connection is only on 
-      // one thread at a time.
-      unsafe { self.inner = r };
-    }
+\subsection{Faster Reconfiguration}\label{s:impl:fast-reconfig}
+
+Changing one or more \tunnel implementations during reconfiguration requires coordinating with any thread that might be using the connection. This coordination is necessary for safety.
+The approach we described in \S\ref{s:impl-reconfig} used locks to implement this coordination. While using locks ensures safety, as we show in \S\ref{s:eval:reconfig}, this adds overheads in the common case when no reconfiguration occurs.
+
+We thus also implement a different approach with lower fast-path overheads: during reconfiguration, we wait for all application threads to arrive at a barrier. Once the barrier resolves, threads other than the one performing the reconfiguration wait on a channel before performing any further operations on the encapsulated connection. Thus, we know it is safe to modify the encapsulated connection by simply writing to the appropriate memory\footnote{We use Rust's \texttt{UnsafeCell} to do this.}, since we know there will be no concurrent accesses to the connection object. 
+The switching point, in this case, is the barrier's resolution: after this, no connection will use the old connection objects.
+Note that in the case of multilateral \tunnels, the barrier must protect the negotiation phase because the negotiation protocol uses the connection to communicate.
+This approach is similar to that used by stop-the-world garbage collectors. The only overhead on the fast path is that when sending or receiving data, each thread needs to read a boolean value indicating whether it needs to stop at a barrier.
+We evaluate reconfiguration mechanisms in \S\ref{s:eval:reconfig}.
+
     
-    // the common case has only two atomic loads (swap_now and 
-    // the reconfig channel)
-    self.inner.send(ms)
-  }
-  /* ... */
-}
-\end{minted}
+\eat{
+\begin{outline}
+\0 Changing one or more \tunnel implementations during reconfiguration requires coordinating with any thread that might be using the connection. This coordination is necessary for safety.
+    \1 In \S\ref{s:impl-reconfig}, our approach used locks for this. While the use of locks ensures safety, as we show in \fixme{XXX} this adds overheads in the application's datapath.
+\0 Our implementation uses a different approach with lower fast-path overheads: during reconfiguration, we wait for all application threads to arrive at a barrier before switching to a new implementation.
+    \1 This approach is similar to that used by stop-the-world garbage collectors. The only overhead on the fast path is that when sending or receiving data, each thread needs to read a boolean indicating that it needs to stop at a barrier.
+    \1 However, this optimization increases reconfiguration latency, that is time until the new implementation is used.
+\0 \fixme{We must use a similar barrier that waits for all endpoints to switch (e.g., in multiparty negotiation) or risk safety?}
 \end{outline}
+}
 
-%\paragrapha{Datapath Batching.} \name allows \tunnel writers to optionally provide functions for sending and receiving batches of data. To do so, \tunnel writers define \texttt{send\_batch} and \texttt{recv\_batch} functions as a part of the \tunnel datapath. The default implementations of these functions, used when a \tunnel-implementation does not provide an implementation, simply calls \texttt{send} (or \texttt{recv}) for each message in the batch. \name also provides an additional connection type, \texttt{nagling\_connection}, that automatically batches \texttt{send} and \texttt{recv} calls using Nagle's algorithm. This makes it easier for application to benefit from batching, and we evaluate this approach in \S\ref{s:casestudies:pubsub}. 
+\cut{
+\subsection{\tunnel Stack Optimizations}\label{s:impl:optimization}
+The amount of computation performed when sending or receiving data over a connection depends on its \tunnel stack, and the implementations chosen.
+In some cases, implementation choices might make redundant some \tunnels in the connection's \tunnel stack, and in other cases reordering \tunnels might result in better performance.
+Unfortunately, the specific optimizations that should be applied depend on the connection and on the chosen implementations, which makes it impractical for developers to manually apply these optimizations.
+Further, since \name is extensible and cannot know the set of \tunnels it will be working with ahead of time, it cannot implement these optimizations automatically.
 
-\subsection{\name Structure}\label{s:impl:structure}
-We implemented \name in Rust. While our design uses several Rust features, including traits and the type system, we believe our ideas are more general and can be implemented using similar features and metaprogramming support in other languages. For example, we believe C++ templates, Racket macros, and Go's generate tool would allow us to implement all of the features we have described in those languages.
+\name instead takes an approach inspired by Broadway~\cite{broadway} 
+where \tunnel implementors and application developers can provide \emph{optimization passes}.
+These passes work on subsets of the \tunnel stack, and can modify them. These passes are similar to optimization passes in machine learning frameworks~\cite{tensorflow-xla, onnx, tvm}, data analytics~\cite{weld}, and Click~\cite{click-opt}.
+Passes are used at compile time: \name enumerates all possible \tunnel stacks that can be used by a connection and applies optimizations to them. This is because the passes themselves rely on type information (to identify \tunnel and \tunnel implementations), and this information is not available at runtime.
+We believe we can implement runtime optimizations instead by recording type information (similar to RTTI), but we leave this to future work.
 
-We implement \tunnel stacks with a structure similar to Lisp's \texttt{cons}. We represent \texttt{Select} and \texttt{Switch} choices simply as a struct that contains both branches.  Since it represents multiple options, these types do not implement \texttt{connect\_wrap}; instead, \name picks one of the available options using the negotiation process (depending on application preferences) and replaces it in the \tunnel stack with an enum variant representing the choice. The enum delegates the \texttt{connect\_wrap} implementation to the choice it represents.
-
-%To expose negotiation functionality to applications, \name needs only a method call for the two-endpoint case. Because multi-endpoint negotiation requires maintaining agreement, \name provides a datapath agent that listens for updates concurrently with any calls to \texttt{send} and \texttt{recv} on the application's connection and dynamically transitions the connection stack appropriately.
-
-%\name provides a \texttt{Subst} procedural macro that helps developers implement \optimizations using a mini-DSL. To use this macro, developers define a Rust trait with a generic output type. Then, developers specify a substitution over arbitrary \tunnel stacks.
-%\name interprets this mini-DSL to generate code that implements the trait for various \tunnel stack types. 
-%Application developers can then use the optimizations by calling the trait method on their \tunnel stack. If the stack doesn't match the optimization pattern, the optimization method will be a no-op.
-%Using the \texttt{Subst} macro is optional; developers can implement their \optimization trait manually over \tunnel stack types.
-
-We implement \name's core libraries (and tests) in \textasciitilde\fixme{$5,300$} lines of Rust, including the three interfaces described above (together \textasciitilde$1,300$ lines) and the negotiation protocol (\textasciitilde$4,000$ lines).
-We further implemented \tunnels for the applications described in \S\ref{s:casestudies} in \textasciitilde \fixme{$3,000$} lines of code, including serialization, reliability, and ordering and base connections, including two DPDK datapaths.
-
-\notePanda{We should add optimization passes here.}
+Note that \name assumes that optimization passes are correct.
+While the type system does check that substitutions are compatible (\eg disallowing substitutions that change the input or output datatype), it can neither ensure that semantics remain the same nor reason about performance.
+Note that negotiation will still check the post-optimization \tunnel stack for multilateral compatibility.
+Therefore, we require application developers to analyze these effects, and then explicitly opt into optimization passes.
+Thus, the effect here is to reduce the tedium and effort required to optimize an application. 
+}
+    
+\eat{
+\begin{outline}
+\0 The amount of computation performed when sending or receiving data over a connection depends on its \tunnel stack, and the implementations chosen.
+    \1 In some cases, implementation choices might make redundant some \tunnels in the connection's \tunnel stack, and in other case reordering \tunnels might yield better performance.
+    \1 Unfortunately, the specific optimizations that should be applied depend on the connection and on the chosen implementations.
+        \2 Makes it impractical to have developers manually apply these optimizations.
+        \2 Also cannot be implemented by \name, which is extensible and allows \tunnels and \tunnel implementations to be added later.
+\0 Take an approach, inspired by Broadway~\cite{guyerlin} %
+  where \tunnel implementors and application developers can provide optimization passes.
+    \1 These passes work on subsets of the \tunnel stack, and can modify them. These passes look similar to optimization passes in machine learning frameworks~\cite{tensorflow-xla, onnx, tvm}, data analytics~\cite{weld}, and Click~\cite{click-opt}.
+    \1 Passes are used at compile time: \name enumerates all possible \tunnel stacks that can be used by a connection, and applies optimizations to them. This is because the passes themselves rely on type information (to identify \tunnel and \tunnel implementations), and this information is not available at runtime.
+    \1 We believe we can implement runtime optimizations instead by recording type information (similar to RTTI), but we leave this to future work.
+\0 Note that \name assumes that optimization passes are correct.
+    \1 While the type system does check that substitutions are compatible (\eg disallowing substitutions that change the input or output datatype), it can neither ensure that semantics remain the same nor reason about performance.
+      \2 Note that negotiation will still check the post-optimization \tunnel stack for multilateral compatibility.
+    \1 Therefore, we require application developers to analyze these effects, and then explicitly opt into optimization passes.%
+    \1 Thus, the effect here is to reduce the tedium and effort required to optimize an application. Our evaluation in \S\ref{s:eval:kv} shows an example (Figure~\ref{f:kvlb}) where we use optimization passes to improve application performance.
+\end{outline}
+}

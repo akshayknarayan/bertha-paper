@@ -1,0 +1,34 @@
+\begin{figure}
+    \centering
+<<msg-queue-transition,fig.showtext=TRUE,compress=TRUE,cache=TRUE,echo=FALSE,message=FALSE,warning=FALSE,fig.width='\\columnwidth',fig.height=3>>=
+library(ggplot2)
+library(showtext)
+font_add_google("IBM Plex Sans")
+showtext_auto()
+
+df <- read.csv("data/transition-25ms-aws-ord5g.data", sep=" ")
+
+df$latency_ms <- df$req_latency_us / 1e3
+df$time <- df$msg_send_time / 1e6
+df$idx <- as.numeric(row.names(df))
+df$phase <- ifelse(df$idx < df$num_msgs / 2, "1", "2")
+ggplot(df, aes(x=time, y=latency_ms)) + 
+    geom_point(aes(colour=phase,shape=phase)) +
+    geom_smooth(aes(colour="black")) + 
+    geom_text(aes(x = 2, y = 5, label = "1 Receiver", colour = "1")) +
+    geom_text(aes(x = 6, y = 15, label = "2 Receivers", colour = "2")) +
+    coord_cartesian(ylim=c(0, 75)) +
+    xlab("Time (s)") + ylab("Message Latency (ms)") +
+    scale_color_manual(values = c("black" = "black", "1" = "#1f78b4", "2" = "#33a02c")) +
+    theme_minimal() +
+    theme(
+        legend.position = "none",
+        text = element_text(size=16, family="IBM Plex Sans", face="bold"),
+        axis.text.x = element_text(size=16, family="IBM Plex Sans", face="bold"),
+        axis.text.y = element_text(size=16, family="IBM Plex Sans", face ="bold")
+    )
+@
+    \caption{Runtime reconfiguration allows switching datapath stacks. Note that the first few requests after the second receiver arrives still use the original stack while the transition commits.} \label{f:msgqueue-transition}
+    \vspace{-5pt}
+\end{figure}
+%\newcommand{\foo}{\Sexpr{round(r_variable, 2)}\xspace}

@@ -1,0 +1,33 @@
+\section{\name Overheads Evaluation}\label{s:eval}
+To evaluate \name's overheads, we focus on cases that require the most processing; consequently, we report worse-case overheads for \name. Our evaluation focuses on three aspects of \name's performance: (a) the impact \tunnels have on application throughput (\S\ref{s:eval:tput}); (b) how does \name impact application latency (\S\ref{s:eval:kv-overhead}); and (c) how long \name takes to reconfigure a connection (\S\ref{s:eval:reconfig}).
+
+
+
+\subsection{Throughput}\label{s:eval:tput}
+\input{throughput}
+\input{tcp-tput}
+We evaluate \name's impact on application throughput using a file transfer benchmark where a client uses $10$ threads, each of which connects to a server, sends a short request receives a $5$GB file in response (thus transfering a total of $50$GB. We implemented two versions of this benchmark: a UDP version that uses a UDP \tunnel over a DPDK \tunnel that implements logic for multiplexing and demultiplexing connections, and a TCP version that uses a TCP \tunnel implemented using sockets. We refer to these two base implementations as `No \tunnel' implementation, since each only includes code that any such client would require. As a baseline, we compare this version's throughput to that of a version of the application written without \name, which our figures refer to as the `Inlined (Baseline)' configuration.
+We also compare the throughput of these `No \tunnel' versions to the throughput achieved by an extension of the program that adds between one and five no-op \tunnels\footnote{We used Rust's \texttt{std::hint::black\_box} in the no-op \tunnel, forcing the compiler to assume that the caller can use any part of the data.} (labelled `1 Chunnel', etc.), that merely reads the data and forwards it to the next \tunnel. 
+
+We measure goodput (\ie rate of file transfer) for both versions of the application, while running them on XL710 nodes connected by $25$Gbit/s links in CloudLab (the same setup as in \S\ref{s:app:lb}). For the UDP applications, we vary packet sizes between $64$ and $1,460$ bytes, while for the TCP applications, we vary the size of the buffer provided to the \texttt{send} call to be between $1,024$ to $8,192$ bytes.%
+
+We show the UDP results in Figure~\ref{f:throughput-ubench} and the TCP results in Figure~\ref{f:tcp-throughput}. For the UDP configuration, we find that in the worst case (the $64$Byte packets), the median achieved goodput and packets transmitted are $27\%$ lower with 5 Chunnels and $18\%$ lower with 1 Chunnel. However, even a small increase in packet size to $128$ Bytes decreases this overhead to $4\%$ with 5 Chunnels, and further increases in packet size cause this to decrease even further.
+For the TCP configuration, trends are less clear because of the inherent variability in using the kernel networking stack, but as a general trend, the overhead decreases as the write size increases.
+
+\input{kv-datapaths}
+\subsection{Key-Value Store Operation Latency}\label{s:eval:kv-overhead}
+Next, we use the key-value store benchmark described in \S\ref{s:app:lb} to evaluate \name's impact on latency. In this case we use three functional \tunnels (serialization, sharding, and reliability) and compare \name's latency (referred to as `Full') in our graphs to two baselines: one that removes negotiation and \tunnels from the application and inlines the remaining implementation, but retains connection multiplexing and demultiplexing features in the datapath (referred to as `No Ch.'); and a second that also removes connection multiplexing (`No Ch.-No Cn.').
+
+Figure~\ref{f:kv-datapaths} shows response latencies as we vary the offered load. Compared to `No Ch.-No Cn.', \name (`Full') exhibits $28\%$ higher median latency at an offered load of $80,000$ requests per second, and this $64\%$ higher median latency at $800,000$ requests per second. We analyzed this result further and found that this difference is because of time spent in connection multiplexing and demultiplexing. Consequently,  when we compare \name's latency to `No Ch.', we observe that \name's median latency is within $6\%$ at both $80,000$ and $800,000$ requests per second of offered load. Connection multiplexing and demultiplexing are common requirements for most applications, and therefore, our results show that \name imposes minimal latency overheads while providing additional functionality in the form of reconfiguration.
+
+
+
+\input{dp-swap}
+\subsection{Reconfiguration}\label{s:eval:reconfig}
+Finally, we evaluate the effect of dynamic reconfiguration on application latency.
+Recall from \S\ref{s:impl:fast-reconfig} that \name offers two mechanisms for dynamic reconfiguration, one using a lock and another which is lock-free; we evaluate both implementations.
+We implement a microbenchmark that switches between two implementations of a DPDK datapath: ``DPDK Single Thread'', which uses only one spin-polling thread to perform packet operations (similar to Shenango~\cite{shenango} or Snap~\cite{snap}), and ``DPDK Multi Thread'' uses spin-polling coroutines on all threads to perform packet operations.
+
+We show the results of switching from ``DPDK-Inline'' to ``DPDK-Thread'' in Figure~\ref{f:dp-swap}. The echo benchmark triggers a \tunnel switch at the server after 3,000 messages, and we display percentile boxplots (p5, p25, p50, p75, p95) of the achieved latency for the two configurations within each 100ms measurement epoch.
+Since the lock-full reconfiguration implementation must acquire a lock for every send and receive, the lock-free version achieves lower latencies with the multi-thread datapath: \beforeSwapDpMedianRttUs $\mu$s median latency vs \beforeSwapMuxMedianRttUs $\mu$s for lock-ful.
+However, the lock-free version incurs a larger reconfiguration time: we observe a \duringSwapDpMedianRttUs $\mu$s median latency in the 10 seconds following the reconfiguration vs. \duringSwapMuxMedianRttUs $\mu$s when using a lock. Note that reconfiguration in this case requires reconfiguring the NIC, and this results in a short duration when the application can neither send nor receive network traffic.

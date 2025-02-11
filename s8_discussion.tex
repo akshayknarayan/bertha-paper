@@ -1,0 +1,18 @@
+\section{Discussion and Conclusion}\label{s:discussion}
+\paragrapha{Porting Existing Libraries to \name}
+To use \name, application developers must find \tunnels that implement the functionality they require.
+At present, this might require them to port existing libraries to \name.
+Porting most libraries requires minimal effort (as discussed in \S\ref{s:impl}): the developer calls the appropriate library functions from the \tunnel's implementation.
+However, building \tunnels is more complicated in two cases: the first is when trying to encapsulate systems, \eg Shenango~\cite{shenango,caladan} and Shinjuku~\cite{shinjuku}, that provide specialized runtimes rather than composable libraries; the second is when dealing with libraries like OpenSSL~\cite{openssl} which limit how they can be composed (OpenSSL uses sockets internally). 
+While we found that we could always encapsulate these runtimes, doing so required taking approaches such as running them in a different thread or process and communicating with them using IPC or memory buffers, adding to \name's overhead.
+
+\paragrapha{Deploying \name} 
+Because \name introduces a negotiation protocol, all parties in a connection must use it to be able to communicate.
+This negotiation protocol can replace existing ad-hoc methods of feature discovery, such as the QUIC discovery convention described in \S\ref{s:app:quic}.
+Of course, to use \name's negotiation, an endpoint must be aware of it; past work has described various mechanisms for advertising protocol availability such as via DNS, and any such mechanism would work with \name.
+While we acknowledge that using \name between arbitrary Internet hosts may be challenging, there are common cases where a single entity controls all connection participants, such as in-service proxies,
+a cloud provider's SDK, or for internal communication between components of a distributed system.
+
+\paragrapha{Conclusion}
+\name contributes abstractions that allow applications to reconfigure their communication functionality at runtime.
+While using communication libraries with deployment-specific optimizations without \name requires error-prone out-of-band configuration, \name's \tunnel abstraction enables safe reconfiguration while making it easy to incorporate new functionality and implementations into applications' network use.

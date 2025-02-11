@@ -1,0 +1,107 @@
+\begin{figure}
+    \centering
+    \begin{subfigure}[t]{\columnwidth}
+<<throughput-ubench-bps,fig.showtext=TRUE,cache=TRUE,echo=FALSE,message=FALSE,warning=FALSE,fig.width='\\columnwidth',fig.height=3>>=
+library(ggplot2)
+library(showtext)
+font_add_google("IBM Plex Sans")
+showtext_auto()
+
+df <- read.csv("data/tput-bbbd4b3.csv")
+
+df$p25_m <- df$p25 / 1e9
+df$p50_m <- df$p5 / 1e9
+df$p75_m <- df$p75 / 1e9
+
+abbrvs <- c(
+  "full:0" = "No Chunnels", 
+  "full:1" = "1 Chunnel", 
+  "full:2" = "2 Chunnels", 
+  "full:3" = "3 Chunnels",
+  "full:4" = "4 Chunnels",
+  "full:5" = "5 Chunnels",
+  "raw" = "Inlined (Baseline)"
+)
+df$label_abbrv <- abbrvs[df$StackType]
+
+ggplot(df[df$rate_type == "rate_bps",], aes(x=as.factor(packet_size), y=p50_m, fill=StackType, label=label_abbrv)) +
+  geom_col(position="dodge") +
+  geom_text(aes(y=1, colour=StackType),angle=90, size=4, hjust=-0.1, position=position_dodge(width=0.9), show.legend=FALSE) +
+  geom_errorbar(aes(ymin=p25_m, ymax=p75_m), position="dodge") +
+  scale_fill_brewer(type="seq", palette=3) +
+  scale_color_manual(values = c(
+    "full:0" = "#000000", 
+    "full:1" = "#40004b", 
+    "full:2" = "#7a0177", 
+    "full:3" = "#c518ba",
+    "full:4" = "#fbb4b9",
+    "full:5" = "#fee8c8",
+    "raw" = "#ffffff"
+  )) +
+  coord_cartesian(ylim=c(0,25)) +
+  xlab("Packet Size (Bytes)") + ylab("Goodput (Gbit/s)") +
+  theme_minimal() +
+  theme(
+      legend.position = "none",
+      legend.title = element_blank(),
+      text = element_text(size=16, family="IBM Plex Sans", face="bold"),
+      axis.text.y = element_text(size=16, family="IBM Plex Sans")
+  )
+@
+        \caption{GBit/s}\label{f:throughput-ubench:bps}
+    \end{subfigure}
+    \begin{subfigure}[t]{\columnwidth}
+    \vspace{10pt}
+<<throughput-ubench-pps,fig.showtext=TRUE,cache=TRUE,echo=FALSE,message=FALSE,warning=FALSE,fig.width='\\columnwidth',fig.height=3>>=
+library(ggplot2)
+library(showtext)
+font_add_google("IBM Plex Sans")
+showtext_auto()
+
+df <- read.csv("data/tput-bbbd4b3.csv")
+
+df$p25_m <- df$p25 / 1e6
+df$p50_m <- df$p5 / 1e6
+df$p75_m <- df$p75 / 1e6
+
+abbrvs <- c(
+  "full:0" = "No Chunnels", 
+  "full:1" = "1 Chunnel", 
+  "full:2" = "2 Chunnels", 
+  "full:3" = "3 Chunnels",
+  "full:4" = "4 Chunnels",
+  "full:5" = "5 Chunnels",
+  "raw" = "Inlined (Baseline)"
+)
+df$label_abbrv <- abbrvs[df$StackType]
+
+ggplot(df[df$rate_type == "rate_pps",], aes(x=as.factor(packet_size), y=p50_m, fill=StackType, label=label_abbrv)) +
+  geom_col(position="dodge") +
+  geom_text(aes(y=1, colour=StackType),angle=90, size=4, hjust=-0.1, position=position_dodge(width=0.9), show.legend=FALSE) +
+  geom_errorbar(aes(ymin=p25_m, ymax=p75_m), position="dodge") +
+  scale_fill_brewer(type="seq", palette=3) +
+  scale_color_manual(values = c(
+    "full:0" = "#000000", 
+    "full:1" = "#40004b", 
+    "full:2" = "#7a0177", 
+    "full:3" = "#c518ba",
+    "full:4" = "#fbb4b9",
+    "full:5" = "#fee8c8",
+    "raw" = "#ffffff"
+  )) +
+  coord_cartesian(ylim=c(0,20)) +
+  xlab("Packet Size (Bytes)") + ylab("Goodput (MPackets/s)") +
+  theme_minimal() +
+  theme(
+      legend.position = "none",
+      legend.title = element_blank(),
+      text = element_text(size=16, family="IBM Plex Sans", face="bold"),
+      axis.text.y = element_text(size=16, family="IBM Plex Sans")
+  )
+@
+\caption{MPackets/s}\label{f:throughput-ubench:pps}
+    \end{subfigure}
+    \vspace{30pt}
+    \caption{The overhead of including a marginal \tunnel in a DPDK-based UDP connection is between 0-27\%, and becomes negligible with larger packet sizes. Columns show p50 and errorbars show p25 and p75 across 10 trials.} \label{f:throughput-ubench}
+\end{figure}
+%\newcommand{\foo}{\Sexpr{round(r_variable, 2)}\xspace}

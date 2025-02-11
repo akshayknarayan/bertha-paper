@@ -1,0 +1,9 @@
+,outdir,pubsub-kafka,encrypt,local-fastpath,producer-allow-client-sharding,producer-msg-interarrival-ms,logparser-processes-per-machine,0.05,0.25,0.5,0.75,0.95
+0,elk-kafka-2023-09-20-e5d8209,with-kafka,allow-none,without-fp,clientshard,10,4,1.8899382500000002,7.762240875,15.142162500000001,22.49519625,28.38374425
+1,elk-kafka-2023-09-20-e5d8209,with-kafka,allow-none,without-fp,clientshard,25,4,1.4754768,7.420681875,14.995393,22.5705245,28.602607775
+2,elk-kafka-2023-09-20-e5d8209,with-kafka,allow-none,without-fp,clientshard,50,4,1.6597714,7.66912575,15.15571925,22.64689,28.6295691
+3,elk-kafka-2023-09-20-e5d8209,with-kafka,allow-none,without-fp,clientshard,100,4,1.2233336000000001,6.956954,14.658042000000002,22.3066305,28.372668899999994
+4,elk-kafka-2023-09-20-e5d8209,without-kafka,allow-none,without-fp,clientshard,10,4,8.0810384,19.9381325,32.7381865,46.794877,57.99798779999999
+5,elk-kafka-2023-09-20-e5d8209,without-kafka,allow-none,without-fp,clientshard,25,4,5.78401675,11.761248625,19.79266525,25.1106405,30.036706899999995
+6,elk-kafka-2023-09-20-e5d8209,without-kafka,allow-none,without-fp,clientshard,50,4,4.4533694,9.833495374999998,18.172428,24.253707249999998,29.958290599999998
+7,elk-kafka-2023-09-20-e5d8209,without-kafka,allow-none,without-fp,clientshard,100,4,3.7778613500000002,9.72357625,18.344682000000002,24.13507325,29.6736967

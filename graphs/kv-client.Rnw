@@ -1,0 +1,41 @@
+% server vs client
+\begin{figure}
+    \centering
+<<kv-client,fig.showtext=TRUE,cache=TRUE,echo=FALSE,message=FALSE,warning=FALSE,fig.width='\\columnwidth',fig.height=2.5>>=
+library(ggplot2)
+library(showtext)
+font_add_google("IBM Plex Sans")
+showtext_auto()
+
+df <- read.csv("data/kv-mlx5-0a7efa1.csv")
+df <- df[df$Datapath == "dpdkmulti",]
+df$kOps <- df$Ops / 1e3
+
+df$Exp <- df$ShardType
+abbrvs <- c("client" = "Client", "server" = "Server")
+df$abbrv_labs <- abbrvs[as.character(df$Exp)]
+
+ggplot(df, aes(x=kOps, colour=Exp, label=abbrv_labs, fill="a", group=interaction(Exp,Ops))) +
+    geom_errorbar(aes(ymin=Latency_us_0.05, ymax = Latency_us_0.95), position=position_dodge2(width=0.9, preserve="single")) +
+    geom_crossbar(aes(ymin=Latency_us_0.25, y=Latency_us_0.5, ymax = Latency_us_0.75), position=position_dodge2(width=0.9, preserve="single")) +
+    geom_text(aes(x=kOps, y=Latency_us_0.95), angle=90, hjust=-0.3, position=position_dodge2(width=8, preserve="single"), show.legend=FALSE) +
+#    facet_grid(~NumShards, labeller = as_labeller(shards)) +
+    scale_color_brewer(type="qual") +
+    scale_color_manual(values = c("#33a02c", "#377eb8"), labels = c("client" = "Client-Side", "server" = "Server-Side")) + 
+    scale_fill_manual(values=c("#ffffff"), guide=FALSE) +
+    coord_cartesian(xlim=c(0, 200), ylim=c(0, 150)) +
+    xlab("Offered Load kOp/sec") + ylab("Request Latency (μs)") +
+    theme_minimal() +
+    theme(
+        legend.position = "none",
+        legend.title = element_blank(),
+        text = element_text(size=16, family="IBM Plex Sans", face="bold"),
+        axis.text.y = element_text(size=16, family="IBM Plex Sans"),
+        panel.grid.minor=element_line(colour="gray"),
+        panel.grid.major=element_line(colour="gray")
+    )
+@
+    \caption{Client sharding scales better with lower latency, and can take advantage of more concurrency at the client without burdening the server implementation with more connections.} \label{f:kv-client}
+\vspace{-10pt}
+\end{figure}
+%\newcommand{\foo}{\Sexpr{round(r_variable, 2)}\xspace}

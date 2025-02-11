@@ -1,0 +1,52 @@
+\begin{figure}[t]
+    \centering
+<<tcp-tput,fig.showtext=TRUE,cache=TRUE,echo=FALSE,message=FALSE,warning=FALSE,fig.width='\\columnwidth',fig.height=3>>=
+library(ggplot2)
+library(showtext)
+font_add_google("IBM Plex Sans")
+showtext_auto()
+
+df <- read.csv("data/tcp-0a7efa1.csv")
+
+df$med_rate_gbps <- df$rate_bps_0.5 / 1e9
+df$low_rate_gbps <- df$rate_bps_0.25 / 1e9
+df$hih_rate_gbps <- df$rate_bps_0.75 / 1e9
+
+abbrvs <- c(
+  "full:0" = "No Chunnels", 
+  "full:1" = "1 Chunnel", 
+  "full:2" = "2 Chunnels", 
+  "full:3" = "3 Chunnels",
+  "full:4" = "4 Chunnels",
+  "full:5" = "5 Chunnels",
+  "raw" = "Inlined (Baseline)"
+)
+df$label_abbrv <- abbrvs[df$StackType]
+
+ggplot(df, aes(x=as.factor(packet_size), y=med_rate_gbps, fill=StackType, label=label_abbrv)) +
+  geom_col(position="dodge") +
+  geom_text(aes(y=1, colour=StackType),angle=90, size=4, hjust=-0.1, position=position_dodge(width=0.9), show.legend=FALSE) +
+  geom_errorbar(aes(ymin=low_rate_gbps, ymax=hih_rate_gbps), position="dodge") +
+  scale_fill_brewer(type="seq", palette=4) +
+  scale_color_manual(values = c(
+    "full:0" = "#000000", 
+    "full:1" = "#40004b", 
+    "full:2" = "#7a0177", 
+    "full:3" = "#c518ba",
+    "full:4" = "#fbb4b9",
+    "full:5" = "#fee8c8",
+    "raw" = "#ffffff"
+  )) +
+  coord_cartesian(ylim=c(0,25)) +
+  xlab("Write Size (Bytes)") + ylab("Goodput (Gbit/s)") +
+  theme_minimal() +
+  theme(
+      legend.position = "none",
+      legend.title = element_blank(),
+      text = element_text(size=16, family="IBM Plex Sans", face="bold"),
+      axis.text.y = element_text(size=16, family="IBM Plex Sans")
+  )
+@
+    \caption{Overhead of a marginal \tunnel for Linux TCP-based connections.} \label{f:tcp-throughput}
+\end{figure}
+%\newcommand{\foo}{\Sexpr{round(r_variable, 2)}\xspace}
