@@ -1,0 +1,73 @@
+\begin{appendix}
+\clearpage
+\section{\name Artifact}\label{app:artifact}
+The artifact for this paper is available at \url{https://github.com/akshayknarayan/burrito}. This appendix will discuss the structure of the code in this repository, and includes detailed instructions for reproducing the paper's results.
+
+\subsection{Implementation}
+
+\paragrapha{\name Core Types}
+\name's implementation is in the \texttt{bertha} crate. Negotiation, including zero-rtt negotiation (\S\ref{s:impl:zerortt}) and multiparty negotation (\S\ref{s:multiparty}) is in the \texttt{negotiate} module, and the crate contains both \name's core type and trait definitions (in \texttt{lib.rs}) as well as a standard library of \tunnel implementations. Our current implementation of multiparty negotiation uses Redis; the implementation of the key-value store functionality is in \texttt{redis-basechunnel}.
+
+\paragrapha{\name Chunnels}
+Many of the crates in the repository contain implementations of individual \tunnels used in this paper.
+The additional \tunnels \etlapp uses are:
+\begin{enumerate}
+    \item  QUIC (via the \texttt{quiche} library) in \texttt{quic-chunnel}.
+    \item TLS (we provide two implementations, one using a proxy server, \texttt{ghostunnel}, and one using the \texttt{rustls} library) in \texttt{tls-tunnel}.
+    \item Kafka (via the \texttt{rdkafka} library) in \texttt{kafka}.
+    \item GCP Pub/Sub (via a custom fork of the Google Cloud Rust API, available at \url{https://github.com/akshayknarayan/google-cloud-rs}) in \texttt{gcp-pubsub}.
+    \item Azure Storage Queues (using the Azure Rust SDK) in \texttt{az-queues}.
+    \item Amazon SQS (using the \texttt{rusoto} library) in \texttt{sqs}.
+    \item Sharding in \texttt{burrito-shard-ctl}.
+\end{enumerate}
+
+Additionally, we implemented two more \tunnels to support \name's overheads evaluation (\S\ref{s:eval}):
+\begin{enumerate}
+    \item A DPDK \tunnel written with only one polling thread, in \texttt{dpdk-direct/src/dpdk-iokernel.rs}.
+    \item A DPDK \tunnel written to use with one polling thread per CPU core, in \texttt{dpdk-direct/src/dpdk-inline}.
+\end{enumerate}
+
+To evaluate \name, we implemented several applications that use \name's functionality. These include:
+\begin{enumerate}
+    \item A key-value store application in \texttt{kvstore}.
+    \item A YCSB client for the key-value store application in \texttt{kvstore-ycsb}. We used this client and the key-value store to produce Figures~\ref{f:kv-client} and \ref{f:kv-datapaths}.
+    \item The without-\name implementation of the KV microbenchmark in Figure~\ref{f:kv-datapaths}, in \texttt{kv-dpdk}.
+    \item The implementations of \etlapp's four component applications, in \texttt{elk-app-logparser}. We used these applications to produce Figure~\ref{f:elk-kafka-gcp}.
+    \item The throughput microbenchmark used to produce Figures~\ref{f:throughput-ubench} and \ref{f:tcp-throughput}, in \texttt{throughput-bench}.
+    \item The reconfiguration microbenchmark used to produce Figure~\ref{f:reconfig}, in \texttt{dpdk-direct/examples/switch-datapath.rs}.
+    \item The reconfiguration microbenchmark used to produce Figure~\ref{f:msgqueue-transition}, in \texttt{queue-steer}.
+    \item A latency microbenchmark, in \texttt{latency-bench}. We did not report results from this microbenchmark in the paper, but include it in the artifact.
+    \item A microbenchmark focusing on negotiation, in \texttt{negotiation-bench}. Similarly to the latency microbenchmark, we did not report results from this microbenchmark in the paper, but include it in the artifact.
+\end{enumerate}
+
+
+Finally, we implemented several more \tunnels that, while not directly used to produce the results in this paper, we contribute as part of the artifact:
+\begin{enumerate}
+    \item A \tunnel that fast-paths machine-local connections between containers on the same machine (similar to Slim~\cite{slim}), in \texttt{burrito-localname-ctl}.
+    \item An implementation of sharding using eBPF's XDP, in \texttt{xdp-shard}.
+    \item A \tunnel that uses Shenango~\cite{shenango} as the application's base network stack, that communicates with the Shenango runtime via a memory channel, in \texttt{shenango-chunnel}.
+    \item Second implementations of the standard library of \tunnels adapted to work within Shenango's runtime, in \texttt{shenango-bertha}.
+    \item An experimental \name feature to support declarative optimizations over \tunnel stacks, in \texttt{cx-list-opt}, and a test in \texttt{cx-list-opt-test}.
+\end{enumerate}
+
+\subsection{Reproducing Results}
+
+All experiment scripts needed to reproduce this paper's results are in the \texttt{scripts} directory. In general, each experiment is expressed as (i) a Python script and (ii) a configuration TOML file. The TOML file contains a description of the experiment's parameters, including the machines to run the experiment on, and the Python script performs the experiment given those parameters. The \texttt{scripts/requirements.txt} file lists the dependencies needed to run the scripts.
+The experiments involving DPDK require passing the \texttt{--dpdk\_driver} argument to the relevant Python script to indicate which NIC driver to use. Note that the Cloudlab machines we used in our experiments use the \texttt{mlx5} option.
+
+With the artifact, we additionally provide Jupyter notebooks that allow additional exploration into the results beyond what we could show in the paper itself. For example, some notebooks show per-component latency profiling information to help further understand \name's performance in the evaluated scenario. 
+
+Finally, the repository to build the paper itself is at \url{https://github.com/akshayknarayan/bertha-paper}. The repository contains the output data that we collected using the experiment scripts above, and plotting scripts (in most cases, shared with the plotting scripts in the notebooks) to produce this paper's figures.
+
+\paragrapha{Figure~\ref{f:elk-kafka-gcp}} \texttt{scripts/elk-app.py} is the Python script to run this experiment, and \texttt{scripts/elk-app/exp.toml} is the experiment's configuration file. Note that one of this experiment's configurations requires GCP credentials. Reproducing the result remains within GCP's free tier as of February 2025. The Jupyter notebooks in the \texttt{scripts/elk-app} directory contain additional detailed information about \etlapp's performance.
+
+\paragrapha{Figure~\ref{f:msgqueue-transition}} This is the only figure in the artifact that does not have use a Python script and notebook. Reproducing this result requires an Amazon AWS account (running the experiment remains within Amazon's free tier as of February 2025). Given this, the program at \texttt{queue-steer/src/bin/transition.rs} will produce a space-separated file.
+The plotting script to produce Figure~\ref{f:msgqueue-transition} is in the paper repository at \url{https://github.com/akshayknarayan/bertha-paper/blob/main/graphs/msg-queue-transition.Rnw}. The script also indicates where to find the artifact's cached data file for this result.
+
+\paragrapha{Figures~\ref{f:kv-client} and \ref{f:kv-datapaths}} \texttt{scripts/kv.py} is the Python script to run this experiment, and \texttt{scripts/kv-config.toml} is the experiment's configuration file. Users should replace the \texttt{machines} field in the configuration file with the appropriate information from their Cloudlab experiment. The Jupyter notebooks prefixed with \texttt{kv-} contain additional details information about the KV microbenchmark's performance. For Figure~\ref{f:kv-datapaths}, replace line 31 with line 30 of the configuration.
+
+\paragrapha{Figures~\ref{f:throughput-ubench} and \ref{f:tcp-throughput}} \texttt{scripts/throughput-bench.py} is the Python script to run these experiments. \texttt{scripts/throughput-bench.toml} is the configuration file for Figure~\ref{f:throughput-ubench}, and \texttt{scripts/tcp-tput.toml} is the configuration file for Figure~\ref{f:tcp-throughput}.
+
+\paragrapha{Figure~}
+
+\end{appendix}
